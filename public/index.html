@@ -477,7 +477,8 @@ function setupCanvas() {
   cv.addEventListener("pointerdown", (e) => {
     if (pointerId !== null) return; // 2本目の指は無視
     e.preventDefault();
-    pointerId = e.pointerId; cv.setPointerCapture(e.pointerId);
+    pointerId = e.pointerId;
+    try { cv.setPointerCapture(e.pointerId); } catch {}
     rect = cv.getBoundingClientRect();
     pad.current = { color: pad.color, size: pad.size, pts: [pos(e, rect)], done: 0 };
     pad.strokes.push(pad.current);
