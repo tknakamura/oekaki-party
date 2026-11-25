@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#ff6b4a" />
+<title>おえかき宴会バトル</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #fff6e9;
+    --ink: #2b2118;
+    --sub: #8a7a6a;
+    --accent: #ff6b4a;
+    --accent2: #ffc83d;
+    --ok: #2bb673;
+    --card: #ffffff;
+    --line: #2b2118;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font-family: "M PLUS Rounded 1c", system-ui, -apple-system, "Hiragino Maru Gothic ProN", sans-serif; }
+  body { background-image: radial-gradient(#f3dcc0 1.2px, transparent 1.2px); background-size: 18px 18px; }
+  #app { max-width: 560px; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); min-height: 100%; }
+  h1 { font-weight: 800; font-size: 30px; line-height: 1.15; margin: 18px 0 4px; text-align: center; }
+  h1 .tilt { display: inline-block; background: var(--accent2); padding: 2px 10px; border: 3px solid var(--line);
+    border-radius: 12px; transform: rotate(-3deg); box-shadow: 3px 3px 0 var(--line); }
+  h2 { font-size: 20px; margin: 4px 0 12px; font-weight: 800; }
+  .lead { text-align: center; color: var(--sub); margin: 10px 0 22px; font-size: 14px; }
+  .card { background: var(--card); border: 3px solid var(--line); border-radius: 18px; padding: 16px;
+    box-shadow: 4px 4px 0 var(--line); margin-bottom: 16px; }
+  label { display: block; font-size: 13px; color: var(--sub); margin-bottom: 6px; font-weight: 800; }
+  input, select { width: 100%; font: inherit; font-size: 18px; padding: 12px 14px; border: 3px solid var(--line);
+    border-radius: 12px; background: #fff; color: var(--ink); outline: none; }
+  input:focus, select:focus { border-color: var(--accent); }
+  .btn { display: block; width: 100%; font: inherit; font-weight: 800; font-size: 18px; padding: 14px;
+    border: 3px solid var(--line); border-radius: 14px; background: var(--accent); color: #fff; cursor: pointer;
+    box-shadow: 0 4px 0 var(--line); transition: transform .05s, box-shadow .05s; margin-top: 12px; }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
+  .btn.alt { background: #fff; color: var(--ink); }
+  .btn.yellow { background: var(--accent2); color: var(--ink); }
+  .btn.small { font-size: 14px; padding: 9px; margin-top: 8px; }
+  .btn:disabled { opacity: .45; pointer-events: none; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .divider { text-align: center; color: var(--sub); margin: 14px 0 4px; font-size: 13px; }
+  .code { font-size: 44px; font-weight: 800; letter-spacing: 8px; text-align: center; margin: 2px 0; }
+  .qr { display: block; margin: 8px auto 0; width: 200px; height: 200px; background: #fff; border-radius: 10px; }
+  .muted { color: var(--sub); font-size: 13px; }
+  .center { text-align: center; }
+  .players { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .players li { border: 2px solid var(--line); border-radius: 999px; padding: 6px 12px; background: #fff;
+    font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+  .players li.off { opacity: .4; }
+  .players li.done { background: #dff6ea; }
+  .badge { font-size: 11px; background: var(--accent2); border: 2px solid var(--line); border-radius: 8px; padding: 0 5px; }
+  .kick { border: none; background: none; font-size: 15px; color: var(--sub); padding: 0 0 0 2px; cursor: pointer; }
+  .prompt-box { background: var(--accent2); border: 3px solid var(--line); border-radius: 16px; padding: 10px 14px;
+    text-align: center; box-shadow: 3px 3px 0 var(--line); margin-bottom: 12px; }
+  .prompt-box small { display: block; font-size: 12px; font-weight: 800; }
+  .prompt-box b { font-size: 24px; line-height: 1.3; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-weight: 800; }
+  .timer { font-size: 22px; min-width: 64px; text-align: center; border: 3px solid var(--line); border-radius: 12px;
+    background: #fff; padding: 2px 8px; }
+  .timer.hurry { background: var(--accent); color: #fff; animation: pulse .6s infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.08); } }
+  .canvas-wrap { border: 3px solid var(--line); border-radius: 16px; overflow: hidden; background: #fff;
+    box-shadow: 4px 4px 0 var(--line); touch-action: none; }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; justify-content: center; }
+  .swatch { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--line); cursor: pointer; padding: 0; }
+  .swatch.sel { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .tool { border: 3px solid var(--line); background: #fff; border-radius: 12px; height: 40px; min-width: 44px;
+    font: inherit; font-weight: 800; font-size: 14px; cursor: pointer; padding: 0 10px; color: var(--ink); }
+  .tool.sel { background: var(--accent2); }
+  .dot { display: inline-block; background: var(--ink); border-radius: 50%; vertical-align: middle; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .entry { position: relative; border: 3px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff;
+    cursor: pointer; box-shadow: 3px 3px 0 var(--line); padding: 0; }
+  .entry img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+  .entry.mine { opacity: .5; cursor: default; }
+  .entry .tag { position: absolute; left: 6px; top: 6px; background: var(--line); color: #fff; font-size: 11px;
+    border-radius: 8px; padding: 2px 6px; font-weight: 800; }
+  .entry.sel { outline: 5px solid var(--accent); outline-offset: -2px; }
+  .entry.sel::after { content: "これに投票"; position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #fff; font-weight: 800; font-size: 12px; padding: 3px 8px; border-radius: 8px; white-space: nowrap; }
+  .rank { display: flex; gap: 12px; align-items: center; border: 3px solid var(--line); border-radius: 14px;
+    background: #fff; padding: 8px; margin-bottom: 10px; box-shadow: 3px 3px 0 var(--line); }
+  .rank img { width: 96px; height: 96px; object-fit: contain; border-radius: 8px; border: 2px solid #eee; flex: none; }
+  .rank.first { background: #fff4cc; }
+  .rank.first img { width: 100%; height: auto; aspect-ratio: 1; }
+  .rank.first { flex-direction: column; align-items: stretch; }
+  .rank .who { font-weight: 800; font-size: 18px; }
+  .rank .pts { color: var(--accent); font-weight: 800; }
+  .medal { font-size: 26px; }
+  .score-list { list-style: none; padding: 0; margin: 0; }
+  .score-list li { display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 2px dashed #e8d9c6; font-weight: 800; }
+  .score-list li:last-child { border-bottom: 0; }
+  .waiting { text-align: center; padding: 26px 10px; }
+  .big-emoji { font-size: 56px; animation: bob 1.2s ease-in-out infinite; display: inline-block; }
+  @keyframes bob { 50% { transform: translateY(-8px) rotate(6deg); } }
+  #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 800; font-size: 14px;
+    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; max-width: 90vw; text-align: center; }
+  #toast.show { opacity: 1; }
+  #conn { position: fixed; top: 0; left: 0; right: 0; background: var(--accent); color: #fff; text-align: center;
+    font-size: 13px; font-weight: 800; padding: 4px; display: none; z-index: 20; }
+  #lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center;
+    justify-content: center; z-index: 30; padding: 16px; }
+  #lightbox img { max-width: 100%; max-height: 80vh; background: #fff; border-radius: 12px; }
+  .confetti { position: fixed; top: -20px; width: 10px; height: 14px; z-index: 40; pointer-events: none;
+    animation: fall linear forwards; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+</style>
+</head>
+<body>
+<div id="conn">接続が切れました。再接続中…</div>
+<div id="app"></div>
+<div id="toast"></div>
+<div id="lightbox"><img alt="" /></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $app = document.getElementById("app");
+const socket = io({ reconnectionDelayMax: 3000 });
+let S = null;            // サーバーからの状態
+let clockOffset = 0;     // サーバー時計との差
+let session = loadSession();
+let drawingSubmittedRound = 0;
+let lastRenderedKey = "";
+let selectedEntry = null;
+const params = new URLSearchParams(location.search);
+const urlRoom = (params.get("room") || "").toUpperCase();
+
+function loadSession() { try { return JSON.parse(localStorage.getItem("oekaki-session") || "null"); } catch { return null; } }
+function saveSession(s) { session = s; try { s ? localStorage.setItem("oekaki-session", JSON.stringify(s)) : localStorage.removeItem("oekaki-session"); } catch {} }
+function savedName() { try { return localStorage.getItem("oekaki-name") || ""; } catch { return ""; } }
+function rememberName(n) { try { localStorage.setItem("oekaki-name", n); } catch {} }
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const me = () => S && S.players.find((p) => p.id === S.me);
+const isHost = () => S && S.hostId === S.me;
+const nameOf = (id) => (S.players.find((p) => p.id === id) || {}).name || "";
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+// ---------- 通信 ----------
+socket.on("connect", () => {
+  document.getElementById("conn").style.display = "none";
+  if (session && (!urlRoom || urlRoom === session.code)) socket.emit("resume", session);
+  else if (!S) render();
+});
+socket.on("disconnect", () => { if (S) document.getElementById("conn").style.display = "block"; });
+socket.on("resumeFailed", () => { saveSession(null); S = null; render(); });
+socket.on("joined", ({ code, playerId, token }) => {
+  saveSession({ code, token });
+  history.replaceState(null, "", "/?room=" + code);
+});
+socket.on("state", (st) => {
+  clockOffset = st.now - Date.now();
+  const prevPhase = S && S.phase;
+  S = st;
+  if (prevPhase !== S.phase) { lastRenderedKey = ""; selectedEntry = null; }
+  render();
+});
+socket.on("errorMsg", toast);
+socket.on("kicked", () => { saveSession(null); S = null; toast("ルームから外れました"); render(); });
+
+// ---------- 画面 ----------
+function render() {
+  if (!S) return renderHome();
+  const fn = { lobby: renderLobby, drawing: renderDrawing, voting: renderVoting, results: renderResults, final: renderFinal }[S.phase];
+  fn();
+}
+
+function renderHome() {
+  lastRenderedKey = "home";
+  const joining = !!urlRoom;
+  $app.innerHTML = `
+    <h1>おえかき<br><span class="tilt">宴会バトル</span></h1>
+    <p class="lead">お題に合わせて指で描いて、いちばんの絵をみんなで決めよう</p>
+    <div class="card">
+      <label for="name">あなたの名前</label>
+      <input id="name" maxlength="12" placeholder="例：たなか" value="${esc(savedName())}" autocomplete="nickname" />
+      ${joining ? `
+        <p class="muted center" style="margin:14px 0 0">ルーム <b style="font-size:18px;letter-spacing:3px">${esc(urlRoom)}</b> に参加します</p>
+        <button class="btn" id="joinBtn">参加する</button>
+        <button class="btn alt small" id="newBtn">自分でルームを作る</button>
+      ` : `
+        <button class="btn" id="createBtn">ルームを作る（幹事）</button>
+        <div class="divider">または コードで参加</div>
+        <div class="row">
+          <input id="code" maxlength="4" placeholder="ABCD" style="text-transform:uppercase;letter-spacing:4px;text-align:center" />
+          <button class="btn yellow" id="joinBtn" style="margin-top:0;flex:0 0 110px">参加</button>
+        </div>
+      `}
+    </div>
+    <p class="muted center">QRコードを読み取った人は名前を入れて「参加する」を押すだけ</p>`;
+  const getName = () => { const n = document.getElementById("name").value.trim(); if (!n) { toast("名前を入力してください"); return null; } rememberName(n); return n; };
+  const create = () => { const n = getName(); if (n) socket.emit("create", { name: n }); };
+  const join = () => {
+    const n = getName(); if (!n) return;
+    const code = joining ? urlRoom : document.getElementById("code").value.trim().toUpperCase();
+    if (code.length !== 4) return toast("4文字のルームコードを入力してください");
+    socket.emit("join", { code, name: n });
+  };
+  document.getElementById("joinBtn").onclick = join;
+  const c = document.getElementById("createBtn"); if (c) c.onclick = create;
+  const nb = document.getElementById("newBtn"); if (nb) nb.onclick = () => { history.replaceState(null, "", "/"); location.reload(); };
+}
+
+function playerChips(opts = {}) {
+  return `<ul class="players">${S.players.map((p) => `
+    <li class="${p.connected ? "" : "off"} ${opts.mark && p[opts.mark] ? "done" : ""}">
+      ${opts.mark && p[opts.mark] ? "✅" : ""}${esc(p.name)}${p.id === S.hostId ? ' <span class="badge">幹事</span>' : ""}${p.id === S.me ? ' <span class="muted">(あなた)</span>' : ""}
+      ${opts.kick && isHost() && p.id !== S.me ? `<button class="kick" data-kick="${p.id}" aria-label="外す">✕</button>` : ""}
+    </li>`).join("")}</ul>`;
+}
+
+function renderLobby() {
+  const key = "lobby";
+  const joinUrl = location.origin + "/?room=" + S.code;
+  const focusedPrompt = document.activeElement && document.activeElement.id === "promptIn" ? document.getElementById("promptIn").value : null;
+  $app.innerHTML = `
+    <div class="card center">
+      <div class="muted">ルームコード</div>
+      <div class="code">${S.code}</div>
+      <img class="qr" src="/api/qr?text=${encodeURIComponent(joinUrl)}" alt="参加用QRコード" />
+      <p class="muted" style="margin:8px 0 0">スマホのカメラで読み取って参加</p>
+      <button class="btn alt small" id="shareBtn">参加リンクを共有</button>
+    </div>
+    <div class="card">
+      <h2>参加者 ${S.players.length}人</h2>
+      ${playerChips({ kick: true })}
+    </div>
+    <div class="card">
+      <h2>お題を出そう 💡</h2>
+      <p class="muted" style="margin-top:-6px">みんなが出したお題が優先で使われます（誰が出したかは秘密）。いま <b>${S.promptCount}</b> 個</p>
+      <div class="row">
+        <input id="promptIn" maxlength="30" placeholder="例：課長の本気ダンス" />
+        <button class="btn yellow" id="addPrompt" style="margin-top:0;flex:0 0 80px">追加</button>
+      </div>
+    </div>
+    ${isHost() ? `
+    <div class="card">
+      <h2>ルール設定</h2>
+      <div class="row">
+        <div><label>ラウンド数</label>
+          <select id="rounds">${[1,2,3,4,5,6,8,10].map((n) => `<option ${n === S.settings.rounds ? "selected" : ""} value="${n}">${n}回</option>`).join("")}</select></div>
+        <div><label>描く時間</label>
+          <select id="secs">${[30,45,60,90,120].map((n) => `<option ${n === S.settings.drawSeconds ? "selected" : ""} value="${n}">${n}秒</option>`).join("")}</select></div>
+      </div>
+      <button class="btn" id="startBtn" ${S.players.filter((p) => p.connected).length < 2 ? "disabled" : ""}>ゲームスタート！</button>
+      ${S.players.length < 2 ? '<p class="muted center">2人以上集まったら始められます</p>' : ""}
+    </div>` : `
+    <div class="card waiting"><div class="big-emoji">🎨</div><p>幹事がスタートするのを待っています…<br><span class="muted">${S.settings.rounds}ラウンド・1回${S.settings.drawSeconds}秒</span></p></div>`}
+    <button class="btn alt small" id="leaveBtn">ルームを抜ける</button>`;
+  if (focusedPrompt !== null) { const i = document.getElementById("promptIn"); i.value = focusedPrompt; i.focus(); }
+  const add = () => {
+    const i = document.getElementById("promptIn"); const v = i.value.trim();
+    if (!v) return; socket.emit("addPrompt", v); i.value = ""; toast("お題を追加しました");
+  };
+  document.getElementById("addPrompt").onclick = add;
+  document.getElementById("promptIn").onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) add(); };
+  document.getElementById("shareBtn").onclick = async () => {
+    if (navigator.share) { try { await navigator.share({ title: "おえかき宴会バトル", text: `ルーム ${S.code} に参加しよう`, url: joinUrl }); } catch {} }
+    else { try { await navigator.clipboard.writeText(joinUrl); toast("リンクをコピーしました"); } catch { toast(joinUrl); } }
+  };
+  document.getElementById("leaveBtn").onclick = () => { if (confirm("ルームを抜けますか？")) { socket.emit("leave"); saveSession(null); S = null; history.replaceState(null, "", "/"); render(); } };
+  $app.querySelectorAll("[data-kick]").forEach((b) => b.onclick = () => { if (confirm(nameOf(b.dataset.kick) + " さんを外しますか？")) socket.emit("kick", b.dataset.kick); });
+  if (isHost()) {
+    const send = () => socket.emit("settings", { rounds: document.getElementById("rounds").value, drawSeconds: document.getElementById("secs").value });
+    document.getElementById("rounds").onchange = send;
+    document.getElementById("secs").onchange = send;
+    document.getElementById("startBtn").onclick = () => socket.emit("start");
+  }
+  lastRenderedKey = key;
+}
+
+// ---------- お絵かき ----------
+const COLORS = ["#2b2118", "#e8402f", "#ff9f1c", "#ffd23f", "#2bb673", "#2d7ff9", "#8e44ad", "#ff7eb6", "#8b5a2b", "#ffffff"];
+const SIZES = [4, 10, 22];
+const pad = { color: COLORS[0], size: SIZES[1], strokes: [], current: null, ctx: null, canvas: null, round: 0 };
+
+function renderDrawing() {
+  const submitted = S.players.find((p) => p.id === S.me)?.submitted;
+  const key = `drawing-${S.round}-${submitted ? "done" : "draw"}`;
+  if (submitted) {
+    if (lastRenderedKey !== key) {
+      $app.innerHTML = `
+        <div class="prompt-box"><small>ラウンド ${S.round}/${S.settings.rounds} のお題</small><b>${esc(S.prompt)}</b></div>
+        <div class="card waiting"><div class="big-emoji">⏳</div><p><b>提出しました！</b><br>みんなが描き終わるのを待っています</p>
+          <div class="topbar" style="justify-content:center;gap:8px">のこり <span class="timer" id="timer">--</span></div></div>
+        <div class="card"><h2 id="progress"></h2><div id="chips"></div>
+          ${isHost() ? '<button class="btn alt small" id="skipBtn">待たずに投票へ進む</button>' : ""}</div>`;
+      const sk = document.getElementById("skipBtn"); if (sk) sk.onclick = () => { if (confirm("まだ描いている人がいます。投票へ進みますか？")) socket.emit("skip"); };
+      lastRenderedKey = key;
+    }
+    const done = S.players.filter((p) => p.submitted).length;
+    document.getElementById("progress").textContent = `提出 ${done}/${S.players.filter((p) => p.connected).length}人`;
+    document.getElementById("chips").innerHTML = playerChips({ mark: "submitted" });
+    return;
+  }
+  if (lastRenderedKey === key) return; // 描画中は画面を作り直さない
+  lastRenderedKey = key;
+  if (pad.round !== S.round) { pad.strokes = []; pad.round = S.round; }
+  $app.innerHTML = `
+    <div class="topbar"><span>ラウンド ${S.round}/${S.settings.rounds}</span><span class="timer" id="timer">--</span></div>
+    <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
+    <div class="canvas-wrap"><canvas id="cv" width="640" height="640"></canvas></div>
+    <div class="tools">${COLORS.map((c) => `<button class="swatch ${c === pad.color ? "sel" : ""}" data-color="${c}" style="background:${c}" aria-label="色"></button>`).join("")}</div>
+    <div class="tools">
+      ${SIZES.map((s) => `<button class="tool ${s === pad.size ? "sel" : ""}" data-size="${s}"><span class="dot" style="width:${Math.max(4, s / 1.6)}px;height:${Math.max(4, s / 1.6)}px"></span></button>`).join("")}
+      <button class="tool" id="undo">↶ 戻す</button>
+      <button class="tool" id="clear">全部消す</button>
+    </div>
+    <button class="btn" id="submitBtn">これで提出！</button>`;
+  setupCanvas();
+  $app.querySelectorAll("[data-color]").forEach((b) => b.onclick = () => {
+    pad.color = b.dataset.color; $app.querySelectorAll("[data-color]").forEach((x) => x.classList.toggle("sel", x === b));
+  });
+  $app.querySelectorAll("[data-size]").forEach((b) => b.onclick = () => {
+    pad.size = +b.dataset.size; $app.querySelectorAll("[data-size]").forEach((x) => x.classList.toggle("sel", x === b));
+  });
+  document.getElementById("undo").onclick = () => { pad.strokes.pop(); redraw(); };
+  document.getElementById("clear").onclick = () => { if (pad.strokes.length && confirm("全部消しますか？")) { pad.strokes = []; redraw(); } };
+  document.getElementById("submitBtn").onclick = () => {
+    if (!pad.strokes.length && !confirm("まだ何も描いていません。白紙で提出しますか？")) return;
+    submitDrawing();
+  };
+}
+
+function setupCanvas() {
+  const cv = document.getElementById("cv");
+  pad.canvas = cv; pad.ctx = cv.getContext("2d");
+  redraw();
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+  cv.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); cv.setPointerCapture(e.pointerId);
+    pad.current = { color: pad.color, size: pad.size, pts: [pos(e)] };
+    pad.strokes.push(pad.current); redraw();
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!pad.current) return; e.preventDefault();
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of evs) pad.current.pts.push(pos(ev));
+    drawStroke(pad.current, true);
+  });
+  const end = () => { pad.current = null; };
+  cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+}
+
+function drawStroke(s, lastOnly) {
+  const c = pad.ctx; c.strokeStyle = s.color; c.fillStyle = s.color; c.lineWidth = s.size; c.lineCap = "round"; c.lineJoin = "round";
+  const p = s.pts;
+  if (p.length === 1) { c.beginPath(); c.arc(p[0][0], p[0][1], s.size / 2, 0, Math.PI * 2); c.fill(); return; }
+  c.beginPath();
+  const start = lastOnly ? Math.max(0, p.length - 3) : 0;
+  c.moveTo(p[start][0], p[start][1]);
+  for (let i = start + 1; i < p.length; i++) c.lineTo(p[i][0], p[i][1]);
+  c.stroke();
+}
+function redraw() {
+  if (!pad.ctx) return;
+  pad.ctx.fillStyle = "#fff"; pad.ctx.fillRect(0, 0, pad.canvas.width, pad.canvas.height);
+  for (const s of pad.strokes) drawStroke(s, false);
+}
+function submitDrawing() {
+  if (drawingSubmittedRound === S.round || !pad.canvas) return;
+  drawingSubmittedRound = S.round;
+  socket.emit("submitDrawing", pad.canvas.toDataURL("image/jpeg", 0.82));
+}
+
+// ---------- 投票 ----------
+function renderVoting() {
+  const voters = S.players.filter((p) => p.connected);
+  const key = `voting-${S.round}`;
+  if (lastRenderedKey !== key) {
+    $app.innerHTML = `
+      <div class="topbar"><span>投票タイム！</span><span class="timer" id="timer">--</span></div>
+      <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
+      <p class="muted center" style="margin-top:0">いちばん良いと思った絵をタップ（自分の絵には投票できません）。長押しで拡大</p>
+      <div class="grid">${S.entries.map((e) => `
+        <button class="entry ${e.mine ? "mine" : ""}" data-entry="${e.entryId}" ${e.mine ? "disabled" : ""}>
+          <img src="${e.image}" alt="" />${e.mine ? '<span class="tag">あなたの絵</span>' : ""}
+        </button>`).join("")}</div>
+      <button class="btn" id="voteBtn" disabled>投票する</button>
+      <div class="card" style="margin-top:16px"><h2 id="progress"></h2><div id="chips"></div>
+        ${isHost() ? '<button class="btn alt small" id="skipBtn">投票を締め切る</button>' : ""}</div>`;
+    $app.querySelectorAll(".entry:not(.mine)").forEach((b) => {
+      b.onclick = () => { if (S.myVote) return; selectedEntry = b.dataset.entry; updateVoteUI(); };
+      let t; b.addEventListener("touchstart", () => { t = setTimeout(() => openLightbox(b.querySelector("img").src), 450); }, { passive: true });
+      b.addEventListener("touchend", () => clearTimeout(t)); b.addEventListener("touchmove", () => clearTimeout(t), { passive: true });
+    });
+    document.getElementById("voteBtn").onclick = () => { if (selectedEntry) socket.emit("vote", selectedEntry); };
+    const sk = document.getElementById("skipBtn"); if (sk) sk.onclick = () => { if (confirm("投票を締め切りますか？")) socket.emit("skip"); };
+    lastRenderedKey = key;
+  }
+  updateVoteUI();
+  document.getElementById("progress").textContent = `投票 ${S.players.filter((p) => p.voted).length}/${voters.length}人`;
+  document.getElementById("chips").innerHTML = playerChips({ mark: "voted" });
+}
+function updateVoteUI() {
+  const chosen = S.myVote || selectedEntry;
+  $app.querySelectorAll(".entry").forEach((b) => b.classList.toggle("sel", b.dataset.entry === chosen));
+  const btn = document.getElementById("voteBtn");
+  if (S.myVote) { btn.disabled = true; btn.textContent = "投票しました ✅"; }
+  else { btn.disabled = !selectedEntry; btn.textContent = "投票する"; }
+}
+function openLightbox(src) {
+  const lb = document.getElementById("lightbox"); lb.querySelector("img").src = src; lb.style.display = "flex";
+}
+document.getElementById("lightbox").onclick = (e) => { e.currentTarget.style.display = "none"; };
+
+// ---------- 結果 ----------
+function rankingHtml(r) {
+  if (r.skipped) return `<div class="card center"><p>絵が2枚以上集まらなかったので、このラウンドは投票なしです</p></div>`;
+  const medals = ["🥇", "🥈", "🥉"];
+  let place = 0, prev = null;
+  return r.ranking.map((x, i) => {
+    if (x.votes !== prev) { place = i; prev = x.votes; }
+    const first = place === 0 && x.votes > 0;
+    return `<div class="rank ${first ? "first" : ""}">
+      <img src="${x.image}" alt="" data-zoom />
+      <div><div class="who">${medals[place] ? `<span class="medal">${medals[place]}</span> ` : ""}${esc(x.name)}${x.playerId === S.me ? " (あなた)" : ""}</div>
+      <div>${x.votes}票 <span class="pts">+${x.points || 0}点</span></div></div></div>`;
+  }).join("");
+}
+function scoreboard() {
+  const list = [...S.players].sort((a, b) => b.score - a.score);
+  return `<ul class="score-list">${list.map((p, i) => `<li><span>${i + 1}. ${esc(p.name)}${p.id === S.me ? " (あなた)" : ""}</span><span>${p.score}点</span></li>`).join("")}</ul>`;
+}
+function bindZoom() { $app.querySelectorAll("[data-zoom]").forEach((im) => im.onclick = () => openLightbox(im.src)); }
+
+function renderResults() {
+  const key = `results-${S.round}`;
+  if (lastRenderedKey === key) return;
+  lastRenderedKey = key;
+  const r = S.result;
+  $app.innerHTML = `
+    <h1 style="font-size:24px">ラウンド ${r.round} 結果発表</h1>
+    <div class="prompt-box"><small>お題</small><b>${esc(r.prompt)}</b></div>
+    ${rankingHtml(r)}
+    <div class="card"><h2>現在の順位</h2>${scoreboard()}</div>
+    ${isHost() ? `<button class="btn" id="nextBtn">次のラウンドへ（${r.round + 1}/${S.settings.rounds}）</button>` :
+      '<p class="muted center">幹事が次のラウンドを始めるのを待っています</p>'}`;
+  bindZoom();
+  if (!r.skipped && r.ranking[0] && r.ranking[0].votes > 0) confetti(40);
+  const nb = document.getElementById("nextBtn"); if (nb) nb.onclick = () => socket.emit("next");
+}
+
+function renderFinal() {
+  const key = `final-${S.round}`;
+  if (lastRenderedKey === key) return;
+  lastRenderedKey = key;
+  const r = S.result;
+  const list = [...S.players].sort((a, b) => b.score - a.score);
+  const champ = list[0];
+  $app.innerHTML = `
+    <h1 style="font-size:24px">最終ラウンド結果</h1>
+    <div class="prompt-box"><small>お題</small><b>${esc(r.prompt)}</b></div>
+    ${rankingHtml(r)}
+    <div class="card center" style="background:#fff4cc">
+      <div class="big-emoji">👑</div>
+      <div class="muted">優勝</div>
+      <div style="font-size:30px;font-weight:800">${esc(champ ? champ.name : "")}</div>
+      <div class="pts" style="color:var(--accent);font-weight:800">${champ ? champ.score : 0}点</div>
+    </div>
+    <div class="card"><h2>最終順位</h2>${scoreboard()}</div>
+    ${isHost() ? '<button class="btn" id="againBtn">もう一度あそぶ</button>' : '<p class="muted center">幹事がもう一度始めるのを待っています</p>'}`;
+  bindZoom();
+  confetti(120);
+  const a = document.getElementById("againBtn"); if (a) a.onclick = () => socket.emit("backToLobby");
+}
+
+function confetti(n) {
+  const colors = ["#ff6b4a", "#ffc83d", "#2bb673", "#2d7ff9", "#ff7eb6"];
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement("div"); d.className = "confetti";
+    d.style.left = Math.random() * 100 + "vw"; d.style.background = colors[i % colors.length];
+    d.style.animationDuration = 1.8 + Math.random() * 1.8 + "s"; d.style.animationDelay = Math.random() * .6 + "s";
+    document.body.appendChild(d); setTimeout(() => d.remove(), 4500);
+  }
+}
+
+// ---------- タイマー ----------
+setInterval(() => {
+  const el = document.getElementById("timer");
+  if (!S || !S.deadline || !el) return;
+  const left = Math.max(0, Math.ceil((S.deadline - (Date.now() + clockOffset)) / 1000));
+  el.textContent = left + "秒";
+  el.classList.toggle("hurry", left <= 10 && left > 0);
+  if (S.phase === "drawing" && left === 0 && !me()?.submitted && pad.strokes.length) submitDrawing(); // 時間切れで自動提出
+}, 250);
+
+// 描いている途中のページ戻りを防ぐ
+window.addEventListener("beforeunload", (e) => { if (S && S.phase === "drawing" && pad.strokes.length && !me()?.submitted) { e.preventDefault(); e.returnValue = ""; } });
+</script>
+</body>
+</html>
