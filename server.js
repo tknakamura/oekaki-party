@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { Server } = require("socket.io");
 const QRCode = require("qrcode");
 const BUILTIN_PROMPTS = require("./prompts");
+const { pickPrompts, aiEnabled } = require("./ai");
 
 const app = express();
 const server = http.createServer(app);
@@ -58,6 +59,9 @@ function createRoom() {
     round: 0,
     prompt: "",
     playerPrompts: [],
+    queue: [], // AI が選んだお題の出題順 [{prompt, comment}]
+    promptComment: "",
+    promptByAI: false,
     usedPrompts: new Set(),
     drawings: new Map(), // playerId -> dataURL
     entries: [], // 投票用 [{entryId, playerId, image}]
@@ -89,6 +93,10 @@ function publicState(room, forId) {
     deadline: room.deadline,
     now: Date.now(),
     promptCount: room.playerPrompts.length,
+    aiEnabled: aiEnabled(),
+    promptComment: room.phase === "lobby" ? "" : room.promptComment,
+    promptByAI: room.phase !== "lobby" && room.promptByAI,
+    aiPickCount: room.queue.length,
     players: [...room.players.values()].map((p) => ({
       id: p.id,
       name: p.name,
@@ -132,6 +140,15 @@ function setTimer(room, ms, fn) {
 }
 
 function pickPrompt(room) {
+  room.promptComment = "";
+  room.promptByAI = false;
+  // AI が選んだお題があればその順番で
+  if (room.queue.length) {
+    const q = room.queue.shift();
+    room.promptComment = q.comment;
+    room.promptByAI = true;
+    return q.prompt;
+  }
   // 参加者が出したお題を優先、なければ内蔵リストから
   if (room.playerPrompts.length) {
     const i = Math.floor(Math.random() * room.playerPrompts.length);
@@ -312,12 +329,27 @@ io.on("connection", (socket) => {
     broadcast(room);
   });
 
-  socket.on("start", () => {
+  socket.on("start", async () => {
     if (!isHost() || room.phase !== "lobby") return;
     if (connectedPlayers(room).length < 2) return fail("2人以上で始められます");
     for (const p of room.players.values()) { p.score = 0; p.history = {}; }
     room.round = 0;
-    startRound(room);
+    room.queue = [];
+    const r = room;
+    // お題がラウンド数より多いときは AI に盛り上がるお題を選んでもらう
+    if (aiEnabled() && r.playerPrompts.length > r.settings.rounds) {
+      r.phase = "selecting";
+      broadcast(r);
+      const candidates = [...r.playerPrompts];
+      const picks = await pickPrompts(candidates, r.settings.rounds);
+      if (!rooms.has(r.code) || r.phase !== "selecting") return;
+      if (picks) {
+        r.queue = picks.map((p) => ({ prompt: candidates[p.index], comment: p.comment }));
+        const used = new Set(picks.map((p) => p.index));
+        r.playerPrompts = candidates.filter((_, i) => !used.has(i));
+      }
+    }
+    startRound(r);
   });
 
   socket.on("submitDrawing", (image) => {
@@ -352,6 +384,9 @@ io.on("connection", (socket) => {
   socket.on("backToLobby", () => {
     if (!isHost()) return;
     clearTimeout(room.timer);
+    // 使われなかった AI 選定のお題は次のゲームに回す
+    room.playerPrompts.push(...room.queue.map((q) => q.prompt));
+    room.queue = [];
     room.phase = "lobby";
     room.round = 0;
     room.lastResult = null;
