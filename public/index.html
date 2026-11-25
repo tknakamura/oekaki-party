@@ -69,6 +69,9 @@
   .canvas-wrap { border: 3px solid var(--line); border-radius: 16px; overflow: hidden; background: #fff;
     box-shadow: 4px 4px 0 var(--line); touch-action: none; }
   canvas { display: block; width: 100%; height: auto; touch-action: none; }
+  .canvas-wrap, canvas, .tools, .entry, .entry img, .rank img {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body.drawing { -webkit-user-select: none; user-select: none; overscroll-behavior: none; }
   .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; justify-content: center; }
   .swatch { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--line); cursor: pointer; padding: 0; }
   .swatch.sel { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -188,7 +191,16 @@ socket.on("joined", ({ code, playerId, token }) => {
   saveSession({ code, token });
   history.replaceState(null, "", "/?room=" + code);
 });
+const imgCache = new Map();
+function fillImages(list) {
+  for (const x of list || []) {
+    if (x.image) imgCache.set(x.imgKey, x.image);
+    else x.image = imgCache.get(x.imgKey) || "";
+  }
+}
 socket.on("state", (st) => {
+  fillImages(st.entries);
+  if (st.result) fillImages(st.result.ranking);
   clockOffset = st.now - Date.now();
   const prevPhase = S && S.phase;
   S = st;
@@ -200,6 +212,7 @@ socket.on("kicked", () => { saveSession(null); S = null; toast("ルームから�
 
 // ---------- 画面 ----------
 function render() {
+  document.body.classList.toggle("drawing", !!S && S.phase === "drawing");
   if (!S) return renderHome();
   const fn = { lobby: renderLobby, drawing: renderDrawing, voting: renderVoting, results: renderResults, final: renderFinal }[S.phase];
   fn();
@@ -414,7 +427,7 @@ function renderDrawing() {
     <div class="topbar">${rankChip()}<span class="timer" id="timer">--</span></div>
     ${bonusBanner()}
     <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
-    <div class="canvas-wrap"><canvas id="cv" width="640" height="640"></canvas></div>
+    <div class="canvas-wrap"><canvas id="cv"></canvas></div>
     <div class="tools">${COLORS.map((c) => `<button class="swatch ${c === pad.color ? "sel" : ""}" data-color="${c}" style="background:${c}" aria-label="色"></button>`).join("")}</div>
     <div class="tools">
       ${SIZES.map((s) => `<button class="tool ${s === pad.size ? "sel" : ""}" data-size="${s}"><span class="dot" style="width:${Math.max(4, s / 1.6)}px;height:${Math.max(4, s / 1.6)}px"></span></button>`).join("")}
@@ -438,45 +451,114 @@ function renderDrawing() {
   };
 }
 
-function setupCanvas() {
-  const cv = document.getElementById("cv");
-  pad.canvas = cv; pad.ctx = cv.getContext("2d");
+// 描画は 640×640 の仮想座標で記録し、画面の細かさに合わせた解像度で描く
+const VIRT = 640;
+const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+
+function fitCanvas() {
+  const cv = pad.canvas; if (!cv || !cv.isConnected) return;
+  const cssW = cv.getBoundingClientRect().width || 320;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const px = Math.min(1600, Math.round(cssW * dpr));
+  if (cv.width !== px) { cv.width = px; cv.height = px; }
+  pad.scale = px / VIRT;
+  pad.ctx.setTransform(pad.scale, 0, 0, pad.scale, 0, 0);
   redraw();
-  const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
-  cv.addEventListener("pointerdown", (e) => {
-    e.preventDefault(); cv.setPointerCapture(e.pointerId);
-    pad.current = { color: pad.color, size: pad.size, pts: [pos(e)] };
-    pad.strokes.push(pad.current); redraw();
-  });
-  cv.addEventListener("pointermove", (e) => {
-    if (!pad.current) return; e.preventDefault();
-    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-    for (const ev of evs) pad.current.pts.push(pos(ev));
-    drawStroke(pad.current, true);
-  });
-  const end = () => { pad.current = null; };
-  cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
 }
 
-function drawStroke(s, lastOnly) {
-  const c = pad.ctx; c.strokeStyle = s.color; c.fillStyle = s.color; c.lineWidth = s.size; c.lineCap = "round"; c.lineJoin = "round";
-  const p = s.pts;
-  if (p.length === 1) { c.beginPath(); c.arc(p[0][0], p[0][1], s.size / 2, 0, Math.PI * 2); c.fill(); return; }
+function setupCanvas() {
+  const cv = document.getElementById("cv");
+  pad.canvas = cv; pad.ctx = cv.getContext("2d", { alpha: false, desynchronized: true }) || cv.getContext("2d");
+  fitCanvas();
+  const pos = (e, r) => [(e.clientX - r.left) * VIRT / r.width, (e.clientY - r.top) * VIRT / r.height];
+  let rect = null, raf = 0, pointerId = null;
+  const flush = () => { raf = 0; if (pad.current) drawSegments(pad.current); };
+
+  cv.addEventListener("pointerdown", (e) => {
+    if (pointerId !== null) return; // 2本目の指は無視
+    e.preventDefault();
+    pointerId = e.pointerId; cv.setPointerCapture(e.pointerId);
+    rect = cv.getBoundingClientRect();
+    pad.current = { color: pad.color, size: pad.size, pts: [pos(e, rect)], done: 0 };
+    pad.strokes.push(pad.current);
+    drawDot(pad.current);
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!pad.current || e.pointerId !== pointerId) return;
+    e.preventDefault();
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    const pts = pad.current.pts;
+    for (const ev of (evs.length ? evs : [e])) {
+      const q = pos(ev, rect), last = pts[pts.length - 1];
+      if (Math.hypot(q[0] - last[0], q[1] - last[1]) >= 1.2) pts.push(q); // 細かすぎる揺れは捨てる
+    }
+    if (!raf) raf = requestAnimationFrame(flush); // 画面の書き換えは1フレームに1回
+  });
+  const end = (e) => {
+    if (e.pointerId !== pointerId) return;
+    pointerId = null;
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    if (pad.current) { drawSegments(pad.current); drawTail(pad.current); }
+    pad.current = null;
+  };
+  cv.addEventListener("pointerup", end);
+  cv.addEventListener("pointercancel", end);
+  // 長押しの拡大鏡・メニュー、スクロールを止める
+  cv.addEventListener("contextmenu", (e) => e.preventDefault());
+  for (const t of ["touchstart", "touchmove"]) cv.addEventListener(t, (e) => e.preventDefault(), { passive: false });
+}
+window.addEventListener("resize", () => { if (S && S.phase === "drawing") fitCanvas(); });
+
+function strokeStyle(s) {
+  const c = pad.ctx;
+  c.strokeStyle = s.color; c.fillStyle = s.color; c.lineWidth = s.size; c.lineCap = "round"; c.lineJoin = "round";
+  return c;
+}
+function drawDot(s) {
+  const c = strokeStyle(s), p = s.pts[0];
+  c.beginPath(); c.arc(p[0], p[1], s.size / 2, 0, Math.PI * 2); c.fill();
+}
+// 点と点の中間を通る2次曲線でつなぐ（なめらかな線になる）
+function drawSegments(s) {
+  const p = s.pts; if (p.length < 2) return;
+  const c = strokeStyle(s);
+  let i = s.done || 0;
+  if (i === 0) { c.beginPath(); c.moveTo(p[0][0], p[0][1]); const m = mid(p[0], p[1]); c.lineTo(m[0], m[1]); c.stroke(); i = 1; }
+  if (i > p.length - 2) { s.done = i; return; }
   c.beginPath();
-  const start = lastOnly ? Math.max(0, p.length - 3) : 0;
-  c.moveTo(p[start][0], p[start][1]);
-  for (let i = start + 1; i < p.length; i++) c.lineTo(p[i][0], p[i][1]);
+  let m = mid(p[i - 1], p[i]); c.moveTo(m[0], m[1]);
+  for (; i <= p.length - 2; i++) { m = mid(p[i], p[i + 1]); c.quadraticCurveTo(p[i][0], p[i][1], m[0], m[1]); }
+  c.stroke();
+  s.done = i;
+}
+function drawTail(s) {
+  const p = s.pts, n = p.length; if (n < 2) return;
+  const c = strokeStyle(s), m = mid(p[n - 2], p[n - 1]);
+  c.beginPath(); c.moveTo(m[0], m[1]); c.lineTo(p[n - 1][0], p[n - 1][1]); c.stroke();
+}
+function drawStroke(s) {
+  const p = s.pts;
+  if (p.length === 1) return drawDot(s);
+  const c = strokeStyle(s);
+  c.beginPath(); c.moveTo(p[0][0], p[0][1]);
+  let m = mid(p[0], p[1]); c.lineTo(m[0], m[1]);
+  for (let i = 1; i < p.length - 1; i++) { m = mid(p[i], p[i + 1]); c.quadraticCurveTo(p[i][0], p[i][1], m[0], m[1]); }
+  c.lineTo(p[p.length - 1][0], p[p.length - 1][1]);
   c.stroke();
 }
 function redraw() {
   if (!pad.ctx) return;
-  pad.ctx.fillStyle = "#fff"; pad.ctx.fillRect(0, 0, pad.canvas.width, pad.canvas.height);
-  for (const s of pad.strokes) drawStroke(s, false);
+  pad.ctx.fillStyle = "#fff"; pad.ctx.fillRect(0, 0, VIRT, VIRT);
+  for (const s of pad.strokes) drawStroke(s);
 }
 function submitDrawing() {
   if (drawingSubmittedRound === S.round || !pad.canvas) return;
   drawingSubmittedRound = S.round;
-  socket.emit("submitDrawing", pad.canvas.toDataURL("image/jpeg", 0.82));
+  // 送るのは 720px 四方に縮小した画像（通信量を抑える）
+  const out = document.createElement("canvas"); out.width = out.height = 720;
+  const o = out.getContext("2d"); o.fillStyle = "#fff"; o.fillRect(0, 0, 720, 720);
+  o.imageSmoothingQuality = "high"; o.drawImage(pad.canvas, 0, 0, 720, 720);
+  socket.emit("submitDrawing", out.toDataURL("image/jpeg", 0.85));
 }
 
 // ---------- 投票 ----------

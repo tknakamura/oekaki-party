@@ -74,6 +74,10 @@ function createRoom() {
 const connectedPlayers = (room) => [...room.players.values()].filter((p) => p.connected);
 
 function publicState(room, forId) {
+  // 同じ絵を何度も送らない（投票のたびに全員分の画像を送り直すと重くなるため）
+  const viewer = room.players.get(forId);
+  const sent = viewer ? (viewer.sentImgs ||= new Set()) : new Set();
+  const img = (key, image) => (sent.has(key) ? null : (sent.add(key), image));
   const base = {
     code: room.code,
     phase: room.phase,
@@ -96,10 +100,22 @@ function publicState(room, forId) {
     })),
   };
   if (room.phase === "voting") {
-    base.entries = room.entries.map((e) => ({ entryId: e.entryId, image: e.image, mine: e.playerId === forId }));
+    base.entries = room.entries.map((e) => {
+      const imgKey = `${room.round}:${e.playerId}`;
+      return { entryId: e.entryId, imgKey, image: img(imgKey, e.image), mine: e.playerId === forId };
+    });
     base.myVote = room.votes.get(forId) || null;
   }
-  if (room.phase === "results" || room.phase === "final") base.result = room.lastResult;
+  if ((room.phase === "results" || room.phase === "final") && room.lastResult) {
+    const r = room.lastResult;
+    base.result = {
+      ...r,
+      ranking: r.ranking.map((x) => {
+        const imgKey = `${r.round}:${x.playerId}`;
+        return { ...x, imgKey, image: img(imgKey, x.image) };
+      }),
+    };
+  }
   return base;
 }
 
@@ -241,6 +257,7 @@ io.on("connection", (socket) => {
     player = p;
     p.socketId = socket.id;
     p.connected = true;
+    p.sentImgs = new Set(); // 新しい接続には画像を送り直す
     socket.emit("joined", { code: r.code, playerId: p.id, token: p.token });
     ensureHost(r);
     broadcast(r);
