@@ -152,7 +152,7 @@ function toast(msg) {
 socket.on("connect", () => {
   document.getElementById("conn").style.display = "none";
   if (session && (!urlRoom || urlRoom === session.code)) socket.emit("resume", session);
-  else if (!S) render();
+  else if (!S && lastRenderedKey !== "home") render();
 });
 socket.on("disconnect", () => { if (S) document.getElementById("conn").style.display = "block"; });
 socket.on("resumeFailed", () => { saveSession(null); S = null; render(); });
@@ -415,6 +415,8 @@ function openLightbox(src) {
   const lb = document.getElementById("lightbox"); lb.querySelector("img").src = src; lb.style.display = "flex";
 }
 document.getElementById("lightbox").onclick = (e) => { e.currentTarget.style.display = "none"; };
+// 接続を待たずにトップ画面を表示（再参加できる場合は接続後に切り替わる）
+if (!session || (urlRoom && urlRoom !== session.code)) setTimeout(() => { if (!S && lastRenderedKey !== "home") renderHome(); }, 0);
 
 // ---------- 結果 ----------
 function rankingHtml(r) {
