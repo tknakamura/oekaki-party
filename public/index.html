@@ -110,6 +110,29 @@
   #lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.8); display: none; align-items: center;
     justify-content: center; z-index: 30; padding: 16px; }
   #lightbox img { max-width: 100%; max-height: 80vh; background: #fff; border-radius: 12px; }
+  .rankchip { border: 3px solid var(--line); background: #fff; border-radius: 12px; font: inherit; font-weight: 800;
+    font-size: 14px; padding: 5px 10px; cursor: pointer; color: var(--ink); box-shadow: 2px 2px 0 var(--line); }
+  .rankchip b { color: var(--accent); }
+  #sheet { position: fixed; inset: 0; background: rgba(43,33,24,.55); display: none; align-items: flex-end;
+    justify-content: center; z-index: 35; }
+  #sheet .panel { background: var(--bg); width: 100%; max-width: 560px; max-height: 85vh; overflow: auto;
+    border-top: 3px solid var(--line); border-radius: 20px 20px 0 0; padding: 18px 16px calc(20px + env(safe-area-inset-bottom)); }
+  .stand { width: 100%; border-collapse: collapse; font-weight: 800; }
+  .stand td { padding: 9px 4px; border-bottom: 2px dashed #e8d9c6; }
+  .stand tr:last-child td { border-bottom: 0; }
+  .stand tr.me td { background: #fff4cc; }
+  .stand .rk { width: 42px; font-size: 18px; text-align: center; }
+  .stand .sc { text-align: right; white-space: nowrap; }
+  .stand .dl { font-size: 12px; color: var(--ok); display: block; }
+  .mv { font-size: 11px; margin-left: 4px; }
+  .mv.up { color: var(--ok); } .mv.down { color: var(--accent); } .mv.same { color: var(--sub); }
+  .tally-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tally { border-collapse: collapse; font-weight: 800; font-size: 14px; min-width: 100%; }
+  .tally th, .tally td { padding: 7px 8px; text-align: center; border-bottom: 2px solid #eee2d2; white-space: nowrap; }
+  .tally th { font-size: 12px; color: var(--sub); }
+  .tally td.nm { text-align: left; position: sticky; left: 0; background: #fff; max-width: 7em; overflow: hidden; text-overflow: ellipsis; }
+  .tally td.tot { color: var(--accent); }
+  .tally td.best { background: #fff4cc; }
   .confetti { position: fixed; top: -20px; width: 10px; height: 14px; z-index: 40; pointer-events: none;
     animation: fall linear forwards; }
   @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
@@ -120,6 +143,7 @@
 <div id="app"></div>
 <div id="toast"></div>
 <div id="lightbox"><img alt="" /></div>
+<div id="sheet"><div class="panel" id="sheetPanel"></div></div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const $app = document.getElementById("app");
@@ -164,7 +188,7 @@ socket.on("state", (st) => {
   clockOffset = st.now - Date.now();
   const prevPhase = S && S.phase;
   S = st;
-  if (prevPhase !== S.phase) { lastRenderedKey = ""; selectedEntry = null; }
+  if (prevPhase !== S.phase) { lastRenderedKey = ""; selectedEntry = null; closeStandings(); }
   render();
 });
 socket.on("errorMsg", toast);
@@ -175,6 +199,73 @@ function render() {
   if (!S) return renderHome();
   const fn = { lobby: renderLobby, drawing: renderDrawing, voting: renderVoting, results: renderResults, final: renderFinal }[S.phase];
   fn();
+}
+
+// ---------- 順位 ----------
+// 直近に結果が出たラウンド（描画中・投票中は1つ前）
+function lastScoredRound() { return (S.phase === "results" || S.phase === "final") ? S.round : S.round - 1; }
+function standings() {
+  const r = lastScoredRound();
+  const withPrev = S.players.map((p) => {
+    const delta = r > 0 ? (p.history[r] || 0) : 0;
+    return { ...p, delta, prev: p.score - delta };
+  });
+  const rankBy = (key) => {
+    const sorted = [...withPrev].sort((a, b) => b[key] - a[key]);
+    const m = new Map(); sorted.forEach((p, i) => m.set(p.id, i > 0 && sorted[i - 1][key] === p[key] ? m.get(sorted[i - 1].id) : i + 1));
+    return m;
+  };
+  const now = rankBy("score"), before = rankBy("prev");
+  return withPrev.map((p) => ({ ...p, rank: now.get(p.id), prevRank: before.get(p.id) }))
+    .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+}
+function moveMark(p) {
+  if (lastScoredRound() < 2) return "";
+  const d = p.prevRank - p.rank;
+  if (d > 0) return `<span class="mv up">▲${d}</span>`;
+  if (d < 0) return `<span class="mv down">▼${-d}</span>`;
+  return `<span class="mv same">―</span>`;
+}
+function standingsTable() {
+  const medals = { 1: "🥇", 2: "🥈", 3: "🥉" };
+  const showDelta = lastScoredRound() > 0;
+  return `<table class="stand">${standings().map((p) => `
+    <tr class="${p.id === S.me ? "me" : ""}">
+      <td class="rk">${p.score > 0 && medals[p.rank] ? medals[p.rank] : p.rank}</td>
+      <td>${esc(p.name)}${p.id === S.me ? ' <span class="muted">(あなた)</span>' : ""}${moveMark(p)}</td>
+      <td class="sc">${p.score}点${showDelta && p.delta ? `<span class="dl">+${p.delta}</span>` : ""}</td>
+    </tr>`).join("")}</table>`;
+}
+function rankChip() {
+  const mine = standings().find((p) => p.id === S.me);
+  const label = lastScoredRound() > 0 && mine ? `🏆 <b>${mine.rank}位</b>/${S.players.length}人` : "🏆 順位";
+  return `<button class="rankchip" data-standings>ラウンド ${S.round}/${S.settings.rounds}・${label}</button>`;
+}
+function bindRankChip() { $app.querySelectorAll("[data-standings]").forEach((b) => b.onclick = openStandings); }
+function openStandings() {
+  const r = lastScoredRound();
+  document.getElementById("sheetPanel").innerHTML = `
+    <h2>現在の順位 <span class="muted">${r > 0 ? `${r}ラウンド終了時点` : "まだ得点はありません"}</span></h2>
+    ${standingsTable()}
+    <p class="muted center">のこり ${Math.max(0, S.settings.rounds - r)} ラウンド</p>
+    <button class="btn alt small" id="sheetClose">閉じる</button>`;
+  document.getElementById("sheet").style.display = "flex";
+  document.getElementById("sheetClose").onclick = closeStandings;
+}
+function closeStandings() { document.getElementById("sheet").style.display = "none"; }
+document.getElementById("sheet").onclick = (e) => { if (e.target.id === "sheet") closeStandings(); };
+
+function tallyTable() {
+  const rounds = Array.from({ length: S.round }, (_, i) => i + 1);
+  const best = {};
+  for (const r of rounds) best[r] = Math.max(0, ...S.players.map((p) => p.history[r] || 0));
+  return `<div class="tally-wrap"><table class="tally">
+    <tr><th style="text-align:left">名前</th>${rounds.map((r) => `<th>R${r}</th>`).join("")}<th>合計</th></tr>
+    ${standings().map((p) => `<tr><td class="nm">${p.rank}. ${esc(p.name)}</td>${rounds.map((r) => {
+      const v = p.history[r];
+      return `<td class="${v && v === best[r] ? "best" : ""}">${v === undefined ? "-" : v}</td>`;
+    }).join("")}<td class="tot">${p.score}</td></tr>`).join("")}
+  </table></div><p class="muted" style="margin:8px 0 0">黄色はそのラウンドの最高得点。横にスクロールできます</p>`;
 }
 
 function renderHome() {
@@ -292,12 +383,14 @@ function renderDrawing() {
   if (submitted) {
     if (lastRenderedKey !== key) {
       $app.innerHTML = `
-        <div class="prompt-box"><small>ラウンド ${S.round}/${S.settings.rounds} のお題</small><b>${esc(S.prompt)}</b></div>
+        <div class="topbar">${rankChip()}</div>
+        <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
         <div class="card waiting"><div class="big-emoji">⏳</div><p><b>提出しました！</b><br>みんなが描き終わるのを待っています</p>
           <div class="topbar" style="justify-content:center;gap:8px">のこり <span class="timer" id="timer">--</span></div></div>
         <div class="card"><h2 id="progress"></h2><div id="chips"></div>
           ${isHost() ? '<button class="btn alt small" id="skipBtn">待たずに投票へ進む</button>' : ""}</div>`;
       const sk = document.getElementById("skipBtn"); if (sk) sk.onclick = () => { if (confirm("まだ描いている人がいます。投票へ進みますか？")) socket.emit("skip"); };
+      bindRankChip();
       lastRenderedKey = key;
     }
     const done = S.players.filter((p) => p.submitted).length;
@@ -309,7 +402,7 @@ function renderDrawing() {
   lastRenderedKey = key;
   if (pad.round !== S.round) { pad.strokes = []; pad.round = S.round; }
   $app.innerHTML = `
-    <div class="topbar"><span>ラウンド ${S.round}/${S.settings.rounds}</span><span class="timer" id="timer">--</span></div>
+    <div class="topbar">${rankChip()}<span class="timer" id="timer">--</span></div>
     <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
     <div class="canvas-wrap"><canvas id="cv" width="640" height="640"></canvas></div>
     <div class="tools">${COLORS.map((c) => `<button class="swatch ${c === pad.color ? "sel" : ""}" data-color="${c}" style="background:${c}" aria-label="色"></button>`).join("")}</div>
@@ -320,6 +413,7 @@ function renderDrawing() {
     </div>
     <button class="btn" id="submitBtn">これで提出！</button>`;
   setupCanvas();
+  bindRankChip();
   $app.querySelectorAll("[data-color]").forEach((b) => b.onclick = () => {
     pad.color = b.dataset.color; $app.querySelectorAll("[data-color]").forEach((x) => x.classList.toggle("sel", x === b));
   });
@@ -381,7 +475,8 @@ function renderVoting() {
   const key = `voting-${S.round}`;
   if (lastRenderedKey !== key) {
     $app.innerHTML = `
-      <div class="topbar"><span>投票タイム！</span><span class="timer" id="timer">--</span></div>
+      <div class="topbar">${rankChip()}<span class="timer" id="timer">--</span></div>
+      <h2 class="center" style="margin:0 0 8px">投票タイム！</h2>
       <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
       <p class="muted center" style="margin-top:0">いちばん良いと思った絵をタップ（自分の絵には投票できません）。長押しで拡大</p>
       <div class="grid">${S.entries.map((e) => `
@@ -398,6 +493,7 @@ function renderVoting() {
     });
     document.getElementById("voteBtn").onclick = () => { if (selectedEntry) socket.emit("vote", selectedEntry); };
     const sk = document.getElementById("skipBtn"); if (sk) sk.onclick = () => { if (confirm("投票を締め切りますか？")) socket.emit("skip"); };
+    bindRankChip();
     lastRenderedKey = key;
   }
   updateVoteUI();
@@ -432,10 +528,6 @@ function rankingHtml(r) {
       <div>${x.votes}票 <span class="pts">+${x.points || 0}点</span></div></div></div>`;
   }).join("");
 }
-function scoreboard() {
-  const list = [...S.players].sort((a, b) => b.score - a.score);
-  return `<ul class="score-list">${list.map((p, i) => `<li><span>${i + 1}. ${esc(p.name)}${p.id === S.me ? " (あなた)" : ""}</span><span>${p.score}点</span></li>`).join("")}</ul>`;
-}
 function bindZoom() { $app.querySelectorAll("[data-zoom]").forEach((im) => im.onclick = () => openLightbox(im.src)); }
 
 function renderResults() {
@@ -447,7 +539,8 @@ function renderResults() {
     <h1 style="font-size:24px">ラウンド ${r.round} 結果発表</h1>
     <div class="prompt-box"><small>お題</small><b>${esc(r.prompt)}</b></div>
     ${rankingHtml(r)}
-    <div class="card"><h2>現在の順位</h2>${scoreboard()}</div>
+    <div class="card"><h2>現在の順位 <span class="muted">のこり${S.settings.rounds - r.round}ラウンド</span></h2>${standingsTable()}</div>
+    ${r.round >= 2 ? `<div class="card"><h2>ラウンドごとの得点</h2>${tallyTable()}</div>` : ""}
     ${isHost() ? `<button class="btn" id="nextBtn">次のラウンドへ（${r.round + 1}/${S.settings.rounds}）</button>` :
       '<p class="muted center">幹事が次のラウンドを始めるのを待っています</p>'}`;
   bindZoom();
@@ -460,8 +553,8 @@ function renderFinal() {
   if (lastRenderedKey === key) return;
   lastRenderedKey = key;
   const r = S.result;
-  const list = [...S.players].sort((a, b) => b.score - a.score);
-  const champ = list[0];
+  const top = standings().filter((p) => p.rank === 1);
+  const champ = top.length ? { name: top.map((p) => p.name).join("・"), score: top[0].score } : null;
   $app.innerHTML = `
     <h1 style="font-size:24px">最終ラウンド結果</h1>
     <div class="prompt-box"><small>お題</small><b>${esc(r.prompt)}</b></div>
@@ -472,7 +565,8 @@ function renderFinal() {
       <div style="font-size:30px;font-weight:800">${esc(champ ? champ.name : "")}</div>
       <div class="pts" style="color:var(--accent);font-weight:800">${champ ? champ.score : 0}点</div>
     </div>
-    <div class="card"><h2>最終順位</h2>${scoreboard()}</div>
+    <div class="card"><h2>最終順位</h2>${standingsTable()}</div>
+    <div class="card"><h2>ラウンドごとの得点</h2>${tallyTable()}</div>
     ${isHost() ? '<button class="btn" id="againBtn">もう一度あそぶ</button>' : '<p class="muted center">幹事がもう一度始めるのを待っています</p>'}`;
   bindZoom();
   confetti(120);

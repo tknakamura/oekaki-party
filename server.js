@@ -89,6 +89,7 @@ function publicState(room, forId) {
       id: p.id,
       name: p.name,
       score: p.score,
+      history: p.history || {},
       connected: p.connected,
       submitted: room.drawings.has(p.id),
       voted: room.votes.has(p.id),
@@ -149,6 +150,7 @@ function startVoting(room) {
   if (room.entries.length < 2) {
     // 投票できるほど絵が集まらなかった
     room.lastResult = { prompt: room.prompt, round: room.round, ranking: rankEntries(room), skipped: true };
+    recordHistory(room, []);
     room.phase = room.round >= room.settings.rounds ? "final" : "results";
     clearTimeout(room.timer);
     return broadcast(room);
@@ -172,6 +174,15 @@ function rankEntries(room) {
     .sort((a, b) => b.votes - a.votes);
 }
 
+// ラウンドごとの獲得点を記録（描かなかった人は0点）
+function recordHistory(room, ranking) {
+  const pts = new Map(ranking.map((r) => [r.playerId, r.points || 0]));
+  for (const p of room.players.values()) {
+    p.history = p.history || {};
+    p.history[room.round] = pts.get(p.id) || 0;
+  }
+}
+
 function finishVoting(room) {
   if (room.phase !== "voting") return;
   clearTimeout(room.timer);
@@ -183,6 +194,7 @@ function finishVoting(room) {
     r.points = r.votes * 100 + (top > 0 && r.votes === top ? 50 : 0); // 1位ボーナス
     p.score += r.points;
   }
+  recordHistory(room, ranking);
   room.lastResult = { prompt: room.prompt, round: room.round, ranking };
   room.phase = room.round >= room.settings.rounds ? "final" : "results";
   room.deadline = 0;
@@ -234,7 +246,7 @@ io.on("connection", (socket) => {
     name = cleanName(name);
     if (!name) return fail("名前を入力してください");
     const r = createRoom();
-    const p = { id: token().slice(0, 10), token: token(), name, score: 0, connected: true };
+    const p = { id: token().slice(0, 10), token: token(), name, score: 0, history: {}, connected: true };
     r.players.set(p.id, p);
     r.hostId = p.id;
     attach(r, p);
@@ -249,7 +261,7 @@ io.on("connection", (socket) => {
     const names = new Set([...r.players.values()].map((p) => p.name));
     let n = name, i = 2;
     while (names.has(n)) n = `${name}${i++}`;
-    const p = { id: token().slice(0, 10), token: token(), name: n, score: 0, connected: true };
+    const p = { id: token().slice(0, 10), token: token(), name: n, score: 0, history: {}, connected: true };
     r.players.set(p.id, p);
     attach(r, p);
   });
@@ -282,7 +294,7 @@ io.on("connection", (socket) => {
   socket.on("start", () => {
     if (!isHost() || room.phase !== "lobby") return;
     if (connectedPlayers(room).length < 2) return fail("2人以上で始められます");
-    for (const p of room.players.values()) p.score = 0;
+    for (const p of room.players.values()) { p.score = 0; p.history = {}; }
     room.round = 0;
     startRound(room);
   });
