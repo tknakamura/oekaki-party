@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#ff6b4a"/>
+  <g fill="#ff8a6e">
+    <circle cx="60" cy="60" r="7"/><circle cx="452" cy="60" r="7"/><circle cx="60" cy="452" r="7"/><circle cx="452" cy="452" r="7"/>
+  </g>
+  <g transform="rotate(-7 256 256)">
+    <rect x="128" y="128" width="268" height="268" rx="34" fill="#2b2118"/>
+    <rect x="114" y="114" width="268" height="268" rx="34" fill="#ffffff" stroke="#2b2118" stroke-width="14"/>
+    <!-- にっこり顔の落書き -->
+    <circle cx="248" cy="246" r="76" fill="#ffc83d" stroke="#2b2118" stroke-width="12"/>
+    <circle cx="222" cy="232" r="10" fill="#2b2118"/>
+    <circle cx="274" cy="232" r="10" fill="#2b2118"/>
+    <path d="M212 266 Q248 300 284 266" fill="none" stroke="#2b2118" stroke-width="12" stroke-linecap="round"/>
+    <path d="M150 352 Q180 330 206 352 T262 352" fill="none" stroke="#2d7ff9" stroke-width="12" stroke-linecap="round"/>
+  </g>
+  <!-- えんぴつ -->
+  <g transform="translate(372 330) rotate(40)">
+    <rect x="-20" y="-120" width="40" height="120" rx="6" fill="#ffc83d" stroke="#2b2118" stroke-width="10"/>
+    <rect x="-20" y="-140" width="40" height="26" rx="6" fill="#ff7eb6" stroke="#2b2118" stroke-width="10"/>
+    <path d="M-20 0 L0 40 L20 0 Z" fill="#f3dcc0" stroke="#2b2118" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M-7 26 L0 40 L7 26 Z" fill="#2b2118"/>
+  </g>
+</svg>

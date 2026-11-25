@@ -1,0 +1,17 @@
+{
+  "name": "おえかき宴会バトル",
+  "short_name": "おえかき宴会",
+  "description": "お題に合わせてスマホで絵を描いて、みんなで投票する宴会ゲーム",
+  "lang": "ja",
+  "start_url": "/?source=homescreen",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff6e9",
+  "theme_color": "#ff6b4a",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
