@@ -133,6 +133,10 @@
   .tally td.nm { text-align: left; position: sticky; left: 0; background: #fff; max-width: 7em; overflow: hidden; text-overflow: ellipsis; }
   .tally td.tot { color: var(--accent); }
   .tally td.best { background: #fff4cc; }
+  .bonus { background: var(--accent); color: #fff; border: 3px solid var(--line); border-radius: 12px; text-align: center;
+    font-weight: 800; padding: 6px 10px; margin-bottom: 10px; box-shadow: 3px 3px 0 var(--line); animation: pulse .7s infinite alternate; }
+  .check { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-weight: 800; font-size: 15px; color: var(--ink); }
+  .check input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
   .confetti { position: fixed; top: -20px; width: 10px; height: 14px; z-index: 40; pointer-events: none;
     animation: fall linear forwards; }
   @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
@@ -236,6 +240,8 @@ function standingsTable() {
       <td class="sc">${p.score}点${showDelta && p.delta ? `<span class="dl">+${p.delta}</span>` : ""}</td>
     </tr>`).join("")}</table>`;
 }
+function isBonusRound() { return S.settings.doubleFinal && S.settings.rounds >= 2 && S.round === S.settings.rounds; }
+function bonusBanner() { return isBonusRound() ? '<div class="bonus">🔥 最終ラウンド！得点2倍 🔥</div>' : ""; }
 function rankChip() {
   const mine = standings().find((p) => p.id === S.me);
   const label = lastScoredRound() > 0 && mine ? `🏆 <b>${mine.rank}位</b>/${S.players.length}人` : "🏆 順位";
@@ -260,7 +266,7 @@ function tallyTable() {
   const best = {};
   for (const r of rounds) best[r] = Math.max(0, ...S.players.map((p) => p.history[r] || 0));
   return `<div class="tally-wrap"><table class="tally">
-    <tr><th style="text-align:left">名前</th>${rounds.map((r) => `<th>R${r}</th>`).join("")}<th>合計</th></tr>
+    <tr><th style="text-align:left">名前</th>${rounds.map((r) => `<th>R${r}${S.settings.doubleFinal && S.settings.rounds >= 2 && r === S.settings.rounds ? "<br>×2" : ""}</th>`).join("")}<th>合計</th></tr>
     ${standings().map((p) => `<tr><td class="nm">${p.rank}. ${esc(p.name)}</td>${rounds.map((r) => {
       const v = p.history[r];
       return `<td class="${v && v === best[r] ? "best" : ""}">${v === undefined ? "-" : v}</td>`;
@@ -345,10 +351,11 @@ function renderLobby() {
         <div><label>描く時間</label>
           <select id="secs">${[30,45,60,90,120].map((n) => `<option ${n === S.settings.drawSeconds ? "selected" : ""} value="${n}">${n}秒</option>`).join("")}</select></div>
       </div>
+      <label class="check"><input type="checkbox" id="dbl" ${S.settings.doubleFinal ? "checked" : ""} /> 最終ラウンドは得点2倍（逆転のチャンス）</label>
       <button class="btn" id="startBtn" ${S.players.filter((p) => p.connected).length < 2 ? "disabled" : ""}>ゲームスタート！</button>
       ${S.players.length < 2 ? '<p class="muted center">2人以上集まったら始められます</p>' : ""}
     </div>` : `
-    <div class="card waiting"><div class="big-emoji">🎨</div><p>幹事がスタートするのを待っています…<br><span class="muted">${S.settings.rounds}ラウンド・1回${S.settings.drawSeconds}秒</span></p></div>`}
+    <div class="card waiting"><div class="big-emoji">🎨</div><p>幹事がスタートするのを待っています…<br><span class="muted">${S.settings.rounds}ラウンド・1回${S.settings.drawSeconds}秒${S.settings.doubleFinal && S.settings.rounds >= 2 ? "・最終ラウンド2倍" : ""}</span></p></div>`}
     <button class="btn alt small" id="leaveBtn">ルームを抜ける</button>`;
   if (focusedPrompt !== null) { const i = document.getElementById("promptIn"); i.value = focusedPrompt; i.focus(); }
   const add = () => {
@@ -364,7 +371,8 @@ function renderLobby() {
   document.getElementById("leaveBtn").onclick = () => { if (confirm("ルームを抜けますか？")) { socket.emit("leave"); saveSession(null); S = null; history.replaceState(null, "", "/"); render(); } };
   $app.querySelectorAll("[data-kick]").forEach((b) => b.onclick = () => { if (confirm(nameOf(b.dataset.kick) + " さんを外しますか？")) socket.emit("kick", b.dataset.kick); });
   if (isHost()) {
-    const send = () => socket.emit("settings", { rounds: document.getElementById("rounds").value, drawSeconds: document.getElementById("secs").value });
+    const send = () => socket.emit("settings", { rounds: document.getElementById("rounds").value, drawSeconds: document.getElementById("secs").value, doubleFinal: document.getElementById("dbl").checked });
+    document.getElementById("dbl").onchange = send;
     document.getElementById("rounds").onchange = send;
     document.getElementById("secs").onchange = send;
     document.getElementById("startBtn").onclick = () => socket.emit("start");
@@ -384,6 +392,7 @@ function renderDrawing() {
     if (lastRenderedKey !== key) {
       $app.innerHTML = `
         <div class="topbar">${rankChip()}</div>
+        ${bonusBanner()}
         <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
         <div class="card waiting"><div class="big-emoji">⏳</div><p><b>提出しました！</b><br>みんなが描き終わるのを待っています</p>
           <div class="topbar" style="justify-content:center;gap:8px">のこり <span class="timer" id="timer">--</span></div></div>
@@ -403,6 +412,7 @@ function renderDrawing() {
   if (pad.round !== S.round) { pad.strokes = []; pad.round = S.round; }
   $app.innerHTML = `
     <div class="topbar">${rankChip()}<span class="timer" id="timer">--</span></div>
+    ${bonusBanner()}
     <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
     <div class="canvas-wrap"><canvas id="cv" width="640" height="640"></canvas></div>
     <div class="tools">${COLORS.map((c) => `<button class="swatch ${c === pad.color ? "sel" : ""}" data-color="${c}" style="background:${c}" aria-label="色"></button>`).join("")}</div>
@@ -477,6 +487,7 @@ function renderVoting() {
     $app.innerHTML = `
       <div class="topbar">${rankChip()}<span class="timer" id="timer">--</span></div>
       <h2 class="center" style="margin:0 0 8px">投票タイム！</h2>
+      ${bonusBanner()}
       <div class="prompt-box"><small>お題</small><b>${esc(S.prompt)}</b></div>
       <p class="muted center" style="margin-top:0">いちばん良いと思った絵をタップ（自分の絵には投票できません）。長押しで拡大</p>
       <div class="grid">${S.entries.map((e) => `
@@ -525,7 +536,7 @@ function rankingHtml(r) {
     return `<div class="rank ${first ? "first" : ""}">
       <img src="${x.image}" alt="" data-zoom />
       <div><div class="who">${medals[place] ? `<span class="medal">${medals[place]}</span> ` : ""}${esc(x.name)}${x.playerId === S.me ? " (あなた)" : ""}</div>
-      <div>${x.votes}票 <span class="pts">+${x.points || 0}点</span></div></div></div>`;
+      <div>${x.votes}票 <span class="pts">+${x.points || 0}点${r.multiplier > 1 && x.points ? "（2倍）" : ""}</span></div></div></div>`;
   }).join("");
 }
 function bindZoom() { $app.querySelectorAll("[data-zoom]").forEach((im) => im.onclick = () => openLightbox(im.src)); }

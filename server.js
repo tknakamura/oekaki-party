@@ -54,7 +54,7 @@ function createRoom() {
     hostId: null,
     players: new Map(), // id -> {id, name, score, socketId, connected, dcAt}
     phase: "lobby",
-    settings: { rounds: 3, drawSeconds: 60 },
+    settings: { rounds: 3, drawSeconds: 60, doubleFinal: true },
     round: 0,
     prompt: "",
     playerPrompts: [],
@@ -183,19 +183,23 @@ function recordHistory(room, ranking) {
   }
 }
 
+// 最終ラウンドは得点2倍（2ラウンド以上のときだけ）
+const isBonusRound = (room) => room.settings.doubleFinal && room.settings.rounds >= 2 && room.round === room.settings.rounds;
+
 function finishVoting(room) {
   if (room.phase !== "voting") return;
   clearTimeout(room.timer);
   const ranking = rankEntries(room);
   const top = ranking[0]?.votes || 0;
+  const multiplier = isBonusRound(room) ? 2 : 1;
   for (const r of ranking) {
     const p = room.players.get(r.playerId);
     if (!p) continue;
-    r.points = r.votes * 100 + (top > 0 && r.votes === top ? 50 : 0); // 1位ボーナス
+    r.points = (r.votes * 100 + (top > 0 && r.votes === top ? 50 : 0)) * multiplier; // 1位ボーナス・最終ラウンド2倍
     p.score += r.points;
   }
   recordHistory(room, ranking);
-  room.lastResult = { prompt: room.prompt, round: room.round, ranking };
+  room.lastResult = { prompt: room.prompt, round: room.round, ranking, multiplier };
   room.phase = room.round >= room.settings.rounds ? "final" : "results";
   room.deadline = 0;
   broadcast(room);
@@ -287,7 +291,7 @@ io.on("connection", (socket) => {
     if (!isHost() || room.phase !== "lobby") return;
     const rounds = Math.min(10, Math.max(1, parseInt(s.rounds) || 3));
     const drawSeconds = [30, 45, 60, 90, 120].includes(+s.drawSeconds) ? +s.drawSeconds : 60;
-    room.settings = { rounds, drawSeconds };
+    room.settings = { rounds, drawSeconds, doubleFinal: s.doubleFinal !== false };
     broadcast(room);
   });
 
