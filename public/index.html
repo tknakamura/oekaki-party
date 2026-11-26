@@ -166,6 +166,7 @@
 <div id="lightbox"><img alt="" /></div>
 <div id="sheet"><div class="panel" id="sheetPanel"></div></div>
 <script src="/socket.io/socket.io.js"></script>
+<script src="/sfx.js"></script>
 <script>
 const $app = document.getElementById("app");
 const socket = io({ reconnectionDelayMax: 3000 });
@@ -251,11 +252,24 @@ socket.on("state", (st) => {
   fillImages(st.entries);
   if (st.result) fillImages(st.result.ranking);
   clockOffset = st.now - Date.now();
+  const prev = S;
   const prevPhase = S && S.phase;
   S = st;
   if (prevPhase !== S.phase) { lastRenderedKey = ""; selectedEntry = null; closeStandings(); }
   render();
+  playStateSounds(prev, S);
 });
+// 状態の変化に合わせて効果音を鳴らす（再接続直後など、前の状態がないときは鳴らさない）
+function playStateSounds(prev, cur) {
+  if (!prev || prev.code !== cur.code) return;
+  if (cur.phase === "lobby" && prev.phase === "lobby" && cur.players.length > prev.players.length) SFX.play("join");
+  if (cur.phase === "drawing" && prev.phase !== "drawing") {
+    if (isBonusRound()) { SFX.play("bonus"); setTimeout(() => SFX.play("prompt"), 950); }
+    else SFX.play("prompt");
+  }
+  if (cur.phase === "results" && prev.phase !== "results") SFX.play("results");
+  if (cur.phase === "final" && prev.phase !== "final") SFX.play("champion");
+}
 socket.on("errorMsg", toast);
 socket.on("kicked", () => { saveSession(null); S = null; toast("ルームから外れました"); render(); });
 
@@ -307,7 +321,7 @@ function bonusBanner() { return isBonusRound() ? '<div class="bonus">🔥 最終
 function rankChip() {
   const mine = standings().find((p) => p.id === S.me);
   const label = lastScoredRound() > 0 && mine ? `🏆 <b>${mine.rank}位</b>/${S.players.length}人` : "🏆 順位";
-  return `<button class="rankchip" data-standings>ラウンド ${S.round}/${S.settings.rounds}・${label}</button>`;
+  return `<button class="rankchip" data-standings>ラウンド ${S.round}/${S.settings.rounds}・${label}${SFX.isMuted() ? " 🔇" : ""}</button>`;
 }
 function bindRankChip() { $app.querySelectorAll("[data-standings]").forEach((b) => b.onclick = openStandings); }
 function openStandings() {
@@ -316,9 +330,20 @@ function openStandings() {
     <h2>現在の順位 <span class="muted">${r > 0 ? `${r}ラウンド終了時点` : "まだ得点はありません"}</span></h2>
     ${standingsTable()}
     <p class="muted center">のこり ${Math.max(0, S.settings.rounds - r)} ラウンド</p>
+    ${soundToggle()}
     <button class="btn alt small" id="sheetClose">閉じる</button>`;
   document.getElementById("sheet").style.display = "flex";
   document.getElementById("sheetClose").onclick = closeStandings;
+  bindSoundToggle();
+}
+function soundToggle() {
+  return `<button class="btn alt small" data-sound>${SFX.isMuted() ? "🔇 効果音：オフ（タップでオン）" : "🔊 効果音：オン（タップでオフ）"}</button>`;
+}
+function bindSoundToggle() {
+  document.querySelectorAll("[data-sound]").forEach((b) => b.onclick = () => {
+    SFX.setMuted(!SFX.isMuted());
+    b.textContent = SFX.isMuted() ? "🔇 効果音：オフ（タップでオン）" : "🔊 効果音：オン（タップでオフ）";
+  });
 }
 function closeStandings() { document.getElementById("sheet").style.display = "none"; }
 document.getElementById("sheet").onclick = (e) => { if (e.target.id === "sheet") closeStandings(); };
@@ -423,8 +448,10 @@ function renderLobby() {
       ${S.players.length < 2 ? '<p class="muted center">2人以上集まったら始められます</p>' : ""}
     </div>` : `
     <div class="card waiting"><div class="big-emoji">🎨</div><p>幹事がスタートするのを待っています…<br><span class="muted">${S.settings.rounds}ラウンド・1回${S.settings.drawSeconds}秒${S.settings.doubleFinal && S.settings.rounds >= 2 ? "・最終ラウンド2倍" : ""}</span></p></div>`}
+    ${soundToggle()}
     <button class="btn alt small" id="leaveBtn">ルームを抜ける</button>`;
   bindAppHint();
+  bindSoundToggle();
   if (focusedPrompt !== null) { const i = document.getElementById("promptIn"); i.value = focusedPrompt; i.focus(); }
   const add = () => {
     const i = document.getElementById("promptIn"); const v = i.value.trim();
@@ -626,6 +653,7 @@ function redraw() {
 function submitDrawing() {
   if (drawingSubmittedRound === S.round || !pad.canvas) return;
   drawingSubmittedRound = S.round;
+  SFX.play("pon");
   // 送るのは 720px 四方に縮小した画像（通信量を抑える）
   const out = document.createElement("canvas"); out.width = out.height = 720;
   const o = out.getContext("2d"); o.fillStyle = "#fff"; o.fillRect(0, 0, 720, 720);
@@ -652,11 +680,11 @@ function renderVoting() {
       <div class="card" style="margin-top:16px"><h2 id="progress"></h2><div id="chips"></div>
         ${isHost() ? '<button class="btn alt small" id="skipBtn">投票を締め切る</button>' : ""}</div>`;
     $app.querySelectorAll(".entry:not(.mine)").forEach((b) => {
-      b.onclick = () => { if (S.myVote) return; selectedEntry = b.dataset.entry; updateVoteUI(); };
+      b.onclick = () => { if (S.myVote) return; selectedEntry = b.dataset.entry; SFX.play("tap"); updateVoteUI(); };
       let t; b.addEventListener("touchstart", () => { t = setTimeout(() => openLightbox(b.querySelector("img").src), 450); }, { passive: true });
       b.addEventListener("touchend", () => clearTimeout(t)); b.addEventListener("touchmove", () => clearTimeout(t), { passive: true });
     });
-    document.getElementById("voteBtn").onclick = () => { if (selectedEntry) socket.emit("vote", selectedEntry); };
+    document.getElementById("voteBtn").onclick = () => { if (selectedEntry) { SFX.play("pon"); socket.emit("vote", selectedEntry); } };
     const sk = document.getElementById("skipBtn"); if (sk) sk.onclick = () => { if (confirm("投票を締め切りますか？")) socket.emit("skip"); };
     bindRankChip();
     lastRenderedKey = key;
@@ -749,12 +777,19 @@ function confetti(n) {
 }
 
 // ---------- タイマー ----------
+let lastTickKey = "";
 setInterval(() => {
   const el = document.getElementById("timer");
   if (!S || !S.deadline || !el) return;
   const left = Math.max(0, Math.ceil((S.deadline - (Date.now() + clockOffset)) / 1000));
   el.textContent = left + "秒";
   el.classList.toggle("hurry", left <= 10 && left > 0);
+  const tickKey = `${S.phase}-${S.round}-${left}`;
+  if (tickKey !== lastTickKey) {
+    lastTickKey = tickKey;
+    if (left > 0 && left <= 5) SFX.play("tick", left === 1);
+    if (left === 0 && S.phase === "drawing" && !me()?.submitted) SFX.play("buzzer");
+  }
   if (S.phase === "drawing" && left === 0 && !me()?.submitted && pad.strokes.length) submitDrawing(); // 時間切れで自動提出
 }, 250);
 
