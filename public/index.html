@@ -182,7 +182,7 @@ const socket = io({ reconnectionDelayMax: 3000 });
 let S = null;            // サーバーからの状態
 let clockOffset = 0;     // サーバー時計との差
 let session = loadSession();
-let drawingSubmittedRound = 0;
+let drawingSubmittedRound = "";
 let lastRenderedKey = "";
 let selectedEntry = null;
 const params = new URLSearchParams(location.search);
@@ -526,7 +526,7 @@ function judgeLabel(j) { return { vote: "みんなで投票", ai: "🤖 AI審査
 
 // ---------- AI 審査中 ----------
 function renderJudging() {
-  const key = `judging-${S.round}`;
+  const key = `judging-${S.roundId}`;
   if (lastRenderedKey === key) return;
   lastRenderedKey = key;
   $app.innerHTML = `
@@ -556,7 +556,7 @@ const pad = { color: COLORS[0], size: SIZES[1], strokes: [], current: null, ctx:
 
 function renderDrawing() {
   const submitted = S.players.find((p) => p.id === S.me)?.submitted;
-  const key = `drawing-${S.round}-${submitted ? "done" : "draw"}`;
+  const key = `drawing-${S.roundId}-${submitted ? "done" : "draw"}`;
   if (submitted) {
     if (lastRenderedKey !== key) {
       $app.innerHTML = `
@@ -578,7 +578,7 @@ function renderDrawing() {
   }
   if (lastRenderedKey === key) return; // 描画中は画面を作り直さない
   lastRenderedKey = key;
-  if (pad.round !== S.round) { pad.strokes = []; pad.round = S.round; }
+  if (pad.round !== S.roundId) { pad.strokes = []; pad.current = null; pad.round = S.roundId; }
   $app.innerHTML = `
     <div class="topbar">${rankChip()}<span class="timer" id="timer">--</span></div>
     ${bonusBanner()}
@@ -709,20 +709,20 @@ function redraw() {
   for (const s of pad.strokes) drawStroke(s);
 }
 function submitDrawing() {
-  if (drawingSubmittedRound === S.round || !pad.canvas) return;
-  drawingSubmittedRound = S.round;
+  if (drawingSubmittedRound === S.roundId || !pad.canvas) return;
+  drawingSubmittedRound = S.roundId;
   SFX.play("pon");
   // 送るのは 720px 四方に縮小した画像（通信量を抑える）
   const out = document.createElement("canvas"); out.width = out.height = 720;
   const o = out.getContext("2d"); o.fillStyle = "#fff"; o.fillRect(0, 0, 720, 720);
   o.imageSmoothingQuality = "high"; o.drawImage(pad.canvas, 0, 0, 720, 720);
-  socket.emit("submitDrawing", out.toDataURL("image/jpeg", 0.85));
+  socket.emit("submitDrawing", { roundId: S.roundId, image: out.toDataURL("image/jpeg", 0.85) });
 }
 
 // ---------- 投票 ----------
 function renderVoting() {
   const voters = S.players.filter((p) => p.connected);
-  const key = `voting-${S.round}`;
+  const key = `voting-${S.roundId}`;
   if (lastRenderedKey !== key) {
     $app.innerHTML = `
       <div class="topbar">${rankChip()}<span class="timer" id="timer">--</span></div>
@@ -792,7 +792,7 @@ function rankingHtml(r) {
 function bindZoom() { $app.querySelectorAll("[data-zoom]").forEach((im) => im.onclick = () => openLightbox(im.src)); }
 
 function renderResults() {
-  const key = `results-${S.round}`;
+  const key = `results-${S.roundId}`;
   if (lastRenderedKey === key) return;
   lastRenderedKey = key;
   const r = S.result;
@@ -810,7 +810,7 @@ function renderResults() {
 }
 
 function renderFinal() {
-  const key = `final-${S.round}`;
+  const key = `final-${S.roundId}`;
   if (lastRenderedKey === key) return;
   lastRenderedKey = key;
   const r = S.result;
@@ -852,7 +852,7 @@ setInterval(() => {
   const left = Math.max(0, Math.ceil((S.deadline - (Date.now() + clockOffset)) / 1000));
   el.textContent = left + "秒";
   el.classList.toggle("hurry", left <= 10 && left > 0);
-  const tickKey = `${S.phase}-${S.round}-${left}`;
+  const tickKey = `${S.phase}-${S.roundId}-${left}`;
   if (tickKey !== lastTickKey) {
     lastTickKey = tickKey;
     if (left > 0 && left <= 5) SFX.play("tick", left === 1);

@@ -57,6 +57,7 @@ function createRoom() {
     phase: "lobby",
     settings: { rounds: 3, drawSeconds: 60, doubleFinal: true, promptMode: "players", theme: "", judgeMode: "vote" },
     round: 0,
+    roundId: "", // ラウンドごとに一意な ID（ゲームをやり直してもラウンド番号と違って重複しない）
     prompt: "",
     playerPrompts: [],
     queue: [], // AI が選んだお題の出題順 [{prompt, comment}]
@@ -93,6 +94,7 @@ function publicState(room, forId) {
     me: forId,
     settings: room.settings,
     round: room.round,
+    roundId: room.roundId,
     prompt: room.phase === "lobby" ? "" : room.prompt,
     deadline: room.deadline,
     now: Date.now(),
@@ -116,7 +118,7 @@ function publicState(room, forId) {
   };
   if (room.phase === "voting" || room.phase === "judging") {
     base.entries = room.entries.map((e) => {
-      const imgKey = `${room.round}:${e.playerId}`;
+      const imgKey = `${room.roundId}:${e.playerId}`;
       return { entryId: e.entryId, imgKey, image: img(imgKey, e.image), mine: e.playerId === forId };
     });
     base.myVote = room.votes.get(forId) || null;
@@ -126,7 +128,7 @@ function publicState(room, forId) {
     base.result = {
       ...r,
       ranking: r.ranking.map((x) => {
-        const imgKey = `${r.round}:${x.playerId}`;
+        const imgKey = `${r.roundId}:${x.playerId}`;
         return { ...x, imgKey, image: img(imgKey, x.image) };
       }),
     };
@@ -173,6 +175,7 @@ function pickPrompt(room) {
 
 function startRound(room) {
   room.round += 1;
+  room.roundId = token().slice(0, 10);
   room.prompt = pickPrompt(room);
   room.usedPrompts.add(room.prompt);
   room.drawings.clear();
@@ -201,7 +204,7 @@ function startVoting(room) {
   const minEntries = aiEnabled() ? 1 : 2; // AI 審査員がいれば1枚でも採点できる
   if (room.entries.length < minEntries) {
     // 審査できるほど絵が集まらなかった
-    room.lastResult = { prompt: room.prompt, round: room.round, ranking: [], skipped: true };
+    room.lastResult = { prompt: room.prompt, round: room.round, roundId: room.roundId, ranking: [], skipped: true };
     recordHistory(room, []);
     room.phase = room.round >= room.settings.rounds ? "final" : "results";
     return broadcast(room);
@@ -226,10 +229,10 @@ async function startJudging(room) {
   room.phase = "judging";
   room.deadline = 0;
   broadcast(room);
-  const round = room.round;
+  const roundId = room.roundId;
   const labels = room.entries.map((e, i) => ({ label: String.fromCharCode(65 + i), playerId: e.playerId, image: e.image }));
   const res = await judgeDrawings(room.prompt, labels);
-  if (!rooms.has(room.code) || room.phase !== "judging" || room.round !== round) return;
+  if (!rooms.has(room.code) || room.phase !== "judging" || room.roundId !== roundId) return;
   if (res) {
     room.aiJudge = {
       byPlayer: new Map(labels.map((l) => [l.playerId, res.byLabel.get(l.label)])),
@@ -278,7 +281,7 @@ function finalizeRound(room) {
   }
   recordHistory(room, ranking);
   room.lastResult = {
-    prompt: room.prompt, round: room.round, ranking, multiplier,
+    prompt: room.prompt, round: room.round, roundId: room.roundId, ranking, multiplier,
     judge: room.judge, aiSummary: ai ? ai.summary : "", aiFailed: room.judge !== "vote" && !ai,
   };
   room.phase = room.round >= room.settings.rounds ? "final" : "results";
@@ -439,8 +442,11 @@ io.on("connection", (socket) => {
     startRound(r);
   });
 
-  socket.on("submitDrawing", (image) => {
+  socket.on("submitDrawing", (payload) => {
     if (!room || room.phase !== "drawing") return;
+    // 前のラウンドの絵が遅れて届いても受け付けない
+    const image = typeof payload === "string" ? payload : payload && payload.image;
+    if (payload && typeof payload === "object" && payload.roundId !== room.roundId) return;
     if (typeof image !== "string" || !image.startsWith("data:image/") || image.length > 3e6) return;
     room.drawings.set(player.id, image);
     broadcast(room);
