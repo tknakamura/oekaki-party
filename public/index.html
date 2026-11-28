@@ -74,6 +74,15 @@
     text-align: center; box-shadow: 3px 3px 0 var(--line); margin-bottom: 12px; }
   .prompt-box small { display: block; font-size: 12px; font-weight: 800; }
   .prompt-box b { font-size: 24px; line-height: 1.3; }
+  .dots { display: flex; gap: 8px; justify-content: center; margin-top: 6px; }
+  .dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: dot 1s infinite; }
+  .dots span:nth-child(2) { animation-delay: .15s; } .dots span:nth-child(3) { animation-delay: .3s; }
+  @keyframes dot { 50% { transform: translateY(-8px); opacity: .4; } }
+  .ai-score { display: inline-block; background: var(--ink); color: #fff; border-radius: 8px; padding: 0 6px; font-size: 13px; margin-right: 4px; }
+  .ai-say { font-size: 13px; color: var(--sub); margin-top: 4px; line-height: 1.5; }
+  .summary { background: #fff; border: 3px solid var(--line); border-radius: 16px; padding: 12px 14px; margin-bottom: 14px;
+    box-shadow: 3px 3px 0 var(--line); font-weight: 800; }
+  .summary small { display: block; color: var(--sub); font-size: 12px; }
   .prompt-box .ai-comment { display: block; font-size: 13px; font-weight: 800; margin-top: 4px; opacity: .8; }
   .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-weight: 800; }
   .timer { font-size: 22px; min-width: 64px; text-align: center; border: 3px solid var(--line); border-radius: 12px;
@@ -277,7 +286,7 @@ socket.on("kicked", () => { saveSession(null); S = null; toast("ルームから�
 function render() {
   document.body.classList.toggle("drawing", !!S && S.phase === "drawing");
   if (!S) return renderHome();
-  const fn = { selecting: renderSelecting, lobby: renderLobby, drawing: renderDrawing, voting: renderVoting, results: renderResults, final: renderFinal }[S.phase];
+  const fn = { judging: renderJudging, selecting: renderSelecting, lobby: renderLobby, drawing: renderDrawing, voting: renderVoting, results: renderResults, final: renderFinal }[S.phase];
   fn();
 }
 
@@ -411,7 +420,8 @@ function playerChips(opts = {}) {
 function renderLobby() {
   const key = "lobby";
   const joinUrl = location.origin + "/?room=" + S.code;
-  const focusedPrompt = document.activeElement && document.activeElement.id === "promptIn" ? document.getElementById("promptIn").value : null;
+  const ae = document.activeElement;
+  const focused = ae && ["promptIn", "theme"].includes(ae.id) ? { id: ae.id, value: ae.value, pos: ae.selectionStart } : null;
   $app.innerHTML = `
     ${appHint()}
     <div class="card center">
@@ -427,8 +437,10 @@ function renderLobby() {
     </div>
     <div class="card">
       <h2>お題を出そう 💡</h2>
-      <p class="muted" style="margin-top:-6px">みんなが出したお題が優先で使われます（誰が出したかは秘密）。いま <b>${S.promptCount}</b> 個${
-        S.aiEnabled ? `<br>🤖 ラウンド数（${S.settings.rounds}回）より多く集まったら、AIが盛り上がるお題を選んで出題順を決めます` : ""}</p>
+      <p class="muted" style="margin-top:-6px">${S.settings.promptMode === "ai"
+        ? `🤖 AIがお題を考えます。思いついたネタを入れると、AIがヒントにします（誰が出したかは秘密）。いま <b>${S.promptCount}</b> 個`
+        : `みんなが出したお題が優先で使われます（誰が出したかは秘密）。いま <b>${S.promptCount}</b> 個${
+          S.aiEnabled ? `<br>🤖 ${S.settings.rounds}個より多ければAIが盛り上がるものを選び、足りなければAIが考えて補います` : ""}`}</p>
       <div class="row">
         <input id="promptIn" maxlength="30" placeholder="例：課長の本気ダンス" />
         <button class="btn yellow" id="addPrompt" style="margin-top:0;flex:0 0 80px">追加</button>
@@ -443,16 +455,32 @@ function renderLobby() {
         <div><label>描く時間</label>
           <select id="secs">${[30,45,60,90,120].map((n) => `<option ${n === S.settings.drawSeconds ? "selected" : ""} value="${n}">${n}秒</option>`).join("")}</select></div>
       </div>
+      ${S.aiEnabled ? `
+      <div style="margin-top:12px"><label>お題の出し方</label>
+        <select id="pmode">
+          <option value="players" ${S.settings.promptMode !== "ai" ? "selected" : ""}>みんなのお題を使う</option>
+          <option value="ai" ${S.settings.promptMode === "ai" ? "selected" : ""}>🤖 AIにおまかせ</option>
+        </select></div>
+      <div style="margin-top:12px"><label>テーマ（任意・AIがお題を考えるときに使います）</label>
+        <input id="theme" maxlength="80" placeholder="例：営業部の忘年会、今年はリモート多め" value="${esc(S.settings.theme || "")}" /></div>
+      <div style="margin-top:12px"><label>審査方法</label>
+        <select id="jmode">
+          <option value="vote" ${S.settings.judgeMode === "vote" ? "selected" : ""}>みんなで投票</option>
+          <option value="ai" ${S.settings.judgeMode === "ai" ? "selected" : ""}>🤖 AI審査員が採点</option>
+          <option value="both" ${S.settings.judgeMode === "both" ? "selected" : ""}>投票＋AI審査員（合計点）</option>
+        </select>
+        <p class="muted" style="margin:6px 0 0">2人で遊ぶときは、自動でAI審査員が採点します</p></div>` : ""}
       <label class="check"><input type="checkbox" id="dbl" ${S.settings.doubleFinal ? "checked" : ""} /> 最終ラウンドは得点2倍（逆転のチャンス）</label>
       <button class="btn" id="startBtn" ${S.players.filter((p) => p.connected).length < 2 ? "disabled" : ""}>ゲームスタート！</button>
       ${S.players.length < 2 ? '<p class="muted center">2人以上集まったら始められます</p>' : ""}
     </div>` : `
-    <div class="card waiting"><div class="big-emoji">🎨</div><p>幹事がスタートするのを待っています…<br><span class="muted">${S.settings.rounds}ラウンド・1回${S.settings.drawSeconds}秒${S.settings.doubleFinal && S.settings.rounds >= 2 ? "・最終ラウンド2倍" : ""}</span></p></div>`}
+    <div class="card waiting"><div class="big-emoji">🎨</div><p>幹事がスタートするのを待っています…<br><span class="muted">${S.settings.rounds}ラウンド・1回${S.settings.drawSeconds}秒${S.settings.doubleFinal && S.settings.rounds >= 2 ? "・最終ラウンド2倍" : ""}${
+      S.aiEnabled ? `<br>お題：${S.settings.promptMode === "ai" ? "🤖 AIにおまかせ" : "みんなのお題"}${S.settings.theme ? `（テーマ：${esc(S.settings.theme)}）` : ""}<br>審査：${judgeLabel(S.players.filter((p) => p.connected).length <= 2 ? "ai" : S.settings.judgeMode)}` : ""}</span></p></div>`}
     ${soundToggle()}
     <button class="btn alt small" id="leaveBtn">ルームを抜ける</button>`;
   bindAppHint();
   bindSoundToggle();
-  if (focusedPrompt !== null) { const i = document.getElementById("promptIn"); i.value = focusedPrompt; i.focus(); }
+  if (focused) { const i = document.getElementById(focused.id); if (i) { i.value = focused.value; i.focus(); try { i.setSelectionRange(focused.pos, focused.pos); } catch {} } }
   const add = () => {
     const i = document.getElementById("promptIn"); const v = i.value.trim();
     if (!v) return; socket.emit("addPrompt", v); i.value = ""; toast("お題を追加しました");
@@ -466,7 +494,12 @@ function renderLobby() {
   document.getElementById("leaveBtn").onclick = () => { if (confirm("ルームを抜けますか？")) { socket.emit("leave"); saveSession(null); S = null; history.replaceState(null, "", "/"); render(); } };
   $app.querySelectorAll("[data-kick]").forEach((b) => b.onclick = () => { if (confirm(nameOf(b.dataset.kick) + " さんを外しますか？")) socket.emit("kick", b.dataset.kick); });
   if (isHost()) {
-    const send = () => socket.emit("settings", { rounds: document.getElementById("rounds").value, drawSeconds: document.getElementById("secs").value, doubleFinal: document.getElementById("dbl").checked });
+    const val = (id) => { const el = document.getElementById(id); return el ? el.value : undefined; };
+    const send = () => socket.emit("settings", { rounds: val("rounds"), drawSeconds: val("secs"), doubleFinal: document.getElementById("dbl").checked,
+      promptMode: val("pmode"), theme: val("theme"), judgeMode: val("jmode") });
+    ["pmode", "jmode"].forEach((id) => { const el = document.getElementById(id); if (el) el.onchange = send; });
+    const th = document.getElementById("theme");
+    if (th) { let t; th.oninput = () => { clearTimeout(t); t = setTimeout(send, 700); }; th.onchange = send; }
     document.getElementById("dbl").onchange = send;
     document.getElementById("rounds").onchange = send;
     document.getElementById("secs").onchange = send;
@@ -482,12 +515,37 @@ function renderSelecting() {
   $app.innerHTML = `
     <div class="card waiting" style="margin-top:40px">
       <div class="big-emoji">🤖</div>
+      ${S.selectingMode === "pick" ? `
       <h2>AIがお題を選んでいます…</h2>
-      <p class="muted">みんなが出した ${S.promptCount} 個のお題から、<br>いちばん盛り上がりそうな ${S.settings.rounds} 個を選んでいます</p>
+      <p class="muted">みんなが出した ${S.promptCount} 個のお題から、<br>いちばん盛り上がりそうな ${S.settings.rounds} 個を選んでいます</p>` : `
+      <h2>AIがお題を考えています…</h2>
+      <p class="muted">${S.settings.theme ? `テーマ「${esc(S.settings.theme)}」に合わせて、<br>` : ""}盛り上がるお題を考え中です</p>`}
     </div>`;
 }
+function judgeLabel(j) { return { vote: "みんなで投票", ai: "🤖 AI審査員", both: "投票＋🤖 AI審査員" }[j] || "みんなで投票"; }
+
+// ---------- AI 審査中 ----------
+function renderJudging() {
+  const key = `judging-${S.round}`;
+  if (lastRenderedKey === key) return;
+  lastRenderedKey = key;
+  $app.innerHTML = `
+    <div class="topbar">${rankChip()}</div>
+    ${promptBox()}
+    <div class="card waiting judge-card">
+      <div class="big-emoji">🧑‍⚖️</div>
+      <h2>AI審査員が採点中…</h2>
+      <p class="muted">${S.judge === "both" ? "みんなの投票に、AI審査員の点数を足します" : "お題の表現・笑い・工夫を見ています"}</p>
+      <div class="dots"><span></span><span></span><span></span></div>
+    </div>
+    <div class="grid">${(S.entries || []).map((e) => `
+      <div class="entry ${e.mine ? "mine" : ""}" style="cursor:default"><img src="${e.image}" alt="" />${e.mine ? '<span class="tag">あなたの絵</span>' : ""}</div>`).join("")}</div>`;
+  bindRankChip();
+}
+
 function promptBox() {
-  return `<div class="prompt-box"><small>${S.promptByAI ? "🤖 AIが選んだお題" : "お題"}</small><b>${esc(S.prompt)}</b>${
+  const label = { "ai-made": "🤖 AIが考えたお題", "ai-picked": "🤖 AIが選んだお題" }[S.promptSource] || "お題";
+  return `<div class="prompt-box"><small>${label}</small><b>${esc(S.prompt)}</b>${
     S.promptComment ? `<span class="ai-comment">${esc(S.promptComment)}</span>` : ""}</div>`;
 }
 
@@ -671,7 +729,8 @@ function renderVoting() {
       <h2 class="center" style="margin:0 0 8px">投票タイム！</h2>
       ${bonusBanner()}
       ${promptBox()}
-      <p class="muted center" style="margin-top:0">いちばん良いと思った絵をタップ（自分の絵には投票できません）。長押しで拡大</p>
+      <p class="muted center" style="margin-top:0">いちばん良いと思った絵をタップ（自分の絵には投票できません）。長押しで拡大${
+        S.judge === "both" ? "<br>🧑‍⚖️ 投票のあと、AI審査員も採点します" : ""}</p>
       <div class="grid">${S.entries.map((e) => `
         <button class="entry ${e.mine ? "mine" : ""}" data-entry="${e.entryId}" ${e.mine ? "disabled" : ""}>
           <img src="${e.image}" alt="" />${e.mine ? '<span class="tag">あなたの絵</span>' : ""}
@@ -709,16 +768,25 @@ if (!session || (urlRoom && urlRoom !== session.code)) setTimeout(() => { if (!S
 
 // ---------- 結果 ----------
 function rankingHtml(r) {
-  if (r.skipped) return `<div class="card center"><p>絵が2枚以上集まらなかったので、このラウンドは投票なしです</p></div>`;
+  if (r.skipped) return `<div class="card center"><p>絵が集まらなかったので、このラウンドは得点なしです</p></div>`;
   const medals = ["🥇", "🥈", "🥉"];
   let place = 0, prev = null;
-  return r.ranking.map((x, i) => {
-    if (x.votes !== prev) { place = i; prev = x.votes; }
-    const first = place === 0 && x.votes > 0;
+  const head = (r.judge && r.judge !== "vote") ? (r.aiSummary
+    ? `<div class="summary"><small>🧑‍⚖️ AI審査員の総評</small>${esc(r.aiSummary)}</div>`
+    : r.aiFailed ? `<div class="summary"><small>🧑‍⚖️ AI審査員</small>今回は審査員が席を外していました…（採点なし）</div>` : "") : "";
+  return head + r.ranking.map((x, i) => {
+    const score = x.points || 0;
+    if (score !== prev) { place = i; prev = score; }
+    const first = place === 0 && score > 0;
+    const detail = [
+      x.votes !== null && x.votes !== undefined ? `${x.votes}票` : "",
+      x.aiScore !== null && x.aiScore !== undefined ? `<span class="ai-score">AI ${x.aiScore}点</span>` : "",
+    ].filter(Boolean).join(" ");
     return `<div class="rank ${first ? "first" : ""}">
       <img src="${x.image}" alt="" data-zoom />
       <div><div class="who">${medals[place] ? `<span class="medal">${medals[place]}</span> ` : ""}${esc(x.name)}${x.playerId === S.me ? " (あなた)" : ""}</div>
-      <div>${x.votes}票 <span class="pts">+${x.points || 0}点${r.multiplier > 1 && x.points ? "（2倍）" : ""}</span></div></div></div>`;
+      <div>${detail} <span class="pts">+${score}点${r.multiplier > 1 && score ? "（2倍）" : ""}</span></div>
+      ${x.aiComment ? `<div class="ai-say">🧑‍⚖️ ${esc(x.aiComment)}</div>` : ""}</div></div>`;
   }).join("");
 }
 function bindZoom() { $app.querySelectorAll("[data-zoom]").forEach((im) => im.onclick = () => openLightbox(im.src)); }
@@ -737,7 +805,7 @@ function renderResults() {
     ${isHost() ? `<button class="btn" id="nextBtn">次のラウンドへ（${r.round + 1}/${S.settings.rounds}）</button>` :
       '<p class="muted center">幹事が次のラウンドを始めるのを待っています</p>'}`;
   bindZoom();
-  if (!r.skipped && r.ranking[0] && r.ranking[0].votes > 0) confetti(40);
+  if (!r.skipped && r.ranking[0] && r.ranking[0].points > 0) confetti(40);
   const nb = document.getElementById("nextBtn"); if (nb) nb.onclick = () => socket.emit("next");
 }
 
