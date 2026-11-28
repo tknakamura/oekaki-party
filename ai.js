@@ -22,7 +22,7 @@ const SYSTEM = `あなたは日本の会社の宴会（忘年会・新年会・�
 - 性的・下品すぎるもの、絵にしようがないもの、意味が通らないもの`;
 
 // Claude を呼んで JSON を受け取る。失敗時は null
-async function callClaude(user, timeoutMs = TIMEOUT_MS, temperature = 1, system = SYSTEM) {
+async function callClaude(user, timeoutMs = TIMEOUT_MS, system = SYSTEM) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -30,7 +30,7 @@ async function callClaude(user, timeoutMs = TIMEOUT_MS, temperature = 1, system 
       method: "POST",
       signal: ctrl.signal,
       headers: { "content-type": "application/json", "x-api-key": API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 2000, temperature, system, messages: [{ role: "user", content: user }] }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 2000, system, messages: [{ role: "user", content: user }] }),
     });
     if (!res.ok) {
       console.error("AI 呼び出しエラー", res.status, (await res.text()).slice(0, 300));
@@ -64,7 +64,7 @@ ${avoid.length ? `\n次のお題はすでに使ったので、同じものや似
 
 次の JSON だけを出力してください（説明文やコードブロックは不要）:
 {"prompts":[{"prompt":"お題","comment":"ひとこと"}]}`;
-  const json = await callClaude(user, 20000, 1);
+  const json = await callClaude(user, 20000);
   if (!json) return null;
   const seen = new Set(avoid);
   const out = [];
@@ -110,7 +110,7 @@ async function judgeDrawings(promptText, entries) {
 次の JSON だけを出力してください（説明文やコードブロックは不要）:
 {"results":[{"label":"A","score":点数,"comment":"コメント"}],"summary":"総評"}`,
   });
-  const json = await callClaude(content, 40000, 0.7, JUDGE_SYSTEM);
+  const json = await callClaude(content, 40000, JUDGE_SYSTEM);
   if (!json || !Array.isArray(json.results)) return null;
   const byLabel = new Map();
   for (const r of json.results) {
